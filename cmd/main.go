@@ -1,12 +1,10 @@
 package main
 
 import (
-	"fmt"
-
-	"github.com/vidarandrebo/once-tree/pkg/greeter"
+	"github.com/vidarandrebo/once-tree/pkg/server"
 )
 
 func main() {
-	test := greeter.NewGreeting()
-	fmt.Println(test.Text)
+	srv := server.NewServer(":8080")
+	srv.Run()
 }

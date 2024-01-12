@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+import "gorums.proto";
+
+package oncetree_proto;
+
+option go_package = "github.com/vidarandrebo/once-tree/pkg/oncetree/oncetree_proto";
+
+
+message Message {
+    uint32 id=1;
+}
