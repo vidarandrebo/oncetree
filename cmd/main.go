@@ -1,12 +1,10 @@
 package main
 
 import (
-	"fmt"
-
-	"github.com/vidarandrebo/once-tree/pkg/greeter"
+	"github.com/vidarandrebo/once-tree/pkg/node"
 )
 
 func main() {
-	test := greeter.NewGreeting()
-	fmt.Println(test.Text)
+	node := node.NewNode(":8080", ":8081")
+	node.Run()
 }
