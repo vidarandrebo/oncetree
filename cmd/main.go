@@ -1,10 +1,10 @@
 package main
 
 import (
-	"github.com/vidarandrebo/once-tree/pkg/server"
+	"github.com/vidarandrebo/once-tree/pkg/node"
 )
 
 func main() {
-	srv := server.NewServer(":8080")
-	srv.Run()
+	node := node.NewNode(":8080", ":8081")
+	node.Run()
 }

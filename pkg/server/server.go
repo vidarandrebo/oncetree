@@ -1,9 +1,11 @@
 package server
 
 import (
-	"github.com/gorilla/mux"
+	"context"
 	"log"
 	"net/http"
+
+	"github.com/gorilla/mux"
 )
 
 type Server struct {
@@ -12,15 +14,12 @@ type Server struct {
 }
 
 func NewServer(listenAddr string) *Server {
-	return &Server{listenAddr: listenAddr}
-}
-
-func (s *Server) Run() {
+	server := Server{listenAddr: listenAddr}
 	router := mux.NewRouter()
-	router.HandleFunc("/", s.Root)
+	router.HandleFunc("/", server.Root)
 
-	s.httpServer = http.Server{
-		Addr:                         s.listenAddr,
+	server.httpServer = http.Server{
+		Addr:                         server.listenAddr,
 		Handler:                      router,
 		DisableGeneralOptionsHandler: false,
 		TLSConfig:                    nil,
@@ -35,5 +34,14 @@ func (s *Server) Run() {
 		BaseContext:                  nil,
 		ConnContext:                  nil,
 	}
+	return &server
+}
+
+func (s *Server) StopServer() {
+	ctx := context.Background();
+	s.httpServer.Shutdown(ctx)
+}
+
+func (s *Server) Run() {
 	log.Fatalln(s.httpServer.ListenAndServe())
 }
