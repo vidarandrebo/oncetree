@@ -13,8 +13,9 @@ message ReadRequest {
 message ReadResponse {
   int64 Value = 1;
 }
+// ReadAllResponse contains a map Address -> Value
 message ReadAllResponse {
-  repeated int64 Value = 1;
+  map<string, int64> Value = 1;
 }
 
 message WriteRequest {
