@@ -1,10 +1,10 @@
 package main
 
 import (
-	"github.com/vidarandrebo/once-tree/pkg/node"
+	"github.com/vidarandrebo/oncetree"
 )
 
 func main() {
-	node := node.NewNode(":8080", ":8081")
+	node := oncetree.NewNode(":8080")
 	node.Run()
 }

@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+import "gorums.proto";
+import "google/protobuf/empty.proto";
+
+package protos;
+
+option go_package = "github.com/vidarandrebo/oncetree/protos";
+
+message ReadRequest {
+  int64 Key = 1;
+}
+message ReadResponse {
+  int64 Value = 1;
+}
+message ReadAllResponse {
+  repeated int64 Value = 1;
+}
+
+message WriteRequest {
+  int64 Key = 1;
+  int64 Value = 2;
+}
+
+
+service KeyValueService {
+  rpc Write(WriteRequest) returns (google.protobuf.Empty) {}
+  rpc Read(ReadRequest) returns (ReadResponse) {}
+  rpc ReadAll(ReadRequest) returns (ReadAllResponse) {
+    option (gorums.quorumcall) = true;
+  }
+}

@@ -1,4 +1,4 @@
-module github.com/vidarandrebo/once-tree
+module github.com/vidarandrebo/oncetree
 
 go 1.21.5
 

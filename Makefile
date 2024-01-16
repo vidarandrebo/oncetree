@@ -7,7 +7,7 @@ build:
 	go build -o bin/oncetreenode cmd/main.go
 
 test:
-	go test -v ./pkg/...
+	go test -v ./...
 
 format:
 	find . -type f -name "*.go" | xargs gofmt -w
