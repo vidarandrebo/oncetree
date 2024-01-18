@@ -1,6 +1,8 @@
 package oncetree
 
 import (
+	"context"
+	"fmt"
 	"github.com/relab/gorums"
 	"github.com/vidarandrebo/oncetree/protos"
 	"google.golang.org/grpc"
@@ -12,28 +14,40 @@ import (
 type Client struct {
 	manager *protos.Manager
 	config  *protos.Configuration
+	id      string
 }
 
-func NewClient(nodes []string) *Client {
-	client := Client{}
-	client.manager = protos.NewManager(
+func NewClient(id string, nodes []string) *Client {
+	manager := protos.NewManager(
 		gorums.WithDialTimeout(1*time.Second),
 		gorums.WithGrpcDialOptions(
 			grpc.WithBlock(),
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
 		),
 	)
-	cfg, err := client.manager.NewConfiguration(QSpec{numNodes: len(nodes)}, gorums.WithNodeList(nodes))
+	cfg, err := manager.NewConfiguration(&QSpec{numNodes: len(nodes)}, gorums.WithNodeList(nodes))
 	if err != nil {
 		log.Fatalln("failed to create gorums client config")
 	}
-	client.config = cfg
+	client := Client{
+		id:      id,
+		config:  cfg,
+		manager: manager,
+	}
 	return &client
 }
 func (c *Client) Run() {
-	//response, err := c.config.Nodes()[0].Write(context.Background(), &protos.WriteRequest{Key: 99, Value: 100})
-}
-
-type QSpec struct {
-	numNodes int
+	_, err := c.config.Nodes()[0].Write(context.Background(), &protos.WriteRequest{
+		ID:    c.id,
+		Key:   99,
+		Value: 100})
+	if err != nil {
+		fmt.Println(err)
+	}
+	response, err := c.config.Nodes()[0].Read(context.Background(), &protos.ReadRequest{Key: 99})
+	if err == nil {
+		fmt.Println(response)
+	} else {
+		fmt.Println(err)
+	}
 }

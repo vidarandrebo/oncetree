@@ -3,7 +3,6 @@ package oncetree
 import (
 	"github.com/relab/gorums"
 	"github.com/vidarandrebo/oncetree/protos"
-	"google.golang.org/grpc/peer"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"log"
 	"net"
@@ -14,12 +13,14 @@ type Node struct {
 	rpcAddr         string
 	keyValueStorage *KeyValueStorage
 	gorumsServer    *gorums.Server
+	id              string
 }
 
-func NewNode(rpcAddr string) *Node {
+func NewNode(id string, rpcAddr string) *Node {
 	return &Node{
 		rpcAddr:         rpcAddr,
 		keyValueStorage: NewKeyValueStorage(),
+		id:              id,
 	}
 }
 
@@ -51,9 +52,7 @@ func (n *Node) startGorumsServer(addr string) {
 }
 
 func (n *Node) Write(ctx gorums.ServerCtx, request *protos.WriteRequest) (response *emptypb.Empty, err error) {
-	peerFromCtx, _ := peer.FromContext(ctx)
-	addr := peerFromCtx.Addr.String()
-	n.keyValueStorage.WriteValue(addr, request.Key, request.Value)
+	n.keyValueStorage.WriteValue(request.GetID(), request.GetKey(), request.GetValue())
 	return &emptypb.Empty{}, nil
 }
 

@@ -5,6 +5,6 @@ import (
 )
 
 func main() {
-	node := oncetree.NewNode(":8080")
+	node := oncetree.NewNode(":8080", ":8080")
 	node.Run()
 }

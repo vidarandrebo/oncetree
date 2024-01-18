@@ -19,8 +19,9 @@ message ReadAllResponse {
 }
 
 message WriteRequest {
-  int64 Key = 1;
-  int64 Value = 2;
+  string ID = 1;
+  int64 Key = 2;
+  int64 Value = 3;
 }
 
 
