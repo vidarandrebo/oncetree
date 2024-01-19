@@ -24,7 +24,6 @@ func (kvs KeyValueStorage) ReadValue(key int64) (int64, error) {
 			agg += value
 		}
 	}
-	fmt.Println(kvs)
 	if found {
 		return agg, nil
 	}
