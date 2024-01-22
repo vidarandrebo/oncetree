@@ -209,11 +209,43 @@ func (n *Node) Read(ctx context.Context, in *ReadRequest) (resp *ReadResponse, e
 	return res.(*ReadResponse), err
 }
 
+// Gossip is a quorum call invoked on all nodes in configuration c,
+// with the same argument in, and returns a combined result.
+func (n *Node) Gossip(ctx context.Context, in *GossipMessage) (resp *emptypb.Empty, err error) {
+	cd := gorums.CallData{
+		Message: in,
+		Method:  "protos.KeyValueService.Gossip",
+	}
+
+	res, err := n.RawNode.RPCCall(ctx, cd)
+	if err != nil {
+		return nil, err
+	}
+	return res.(*emptypb.Empty), err
+}
+
+// PrintState is a quorum call invoked on all nodes in configuration c,
+// with the same argument in, and returns a combined result.
+func (n *Node) PrintState(ctx context.Context, in *emptypb.Empty) (resp *emptypb.Empty, err error) {
+	cd := gorums.CallData{
+		Message: in,
+		Method:  "protos.KeyValueService.PrintState",
+	}
+
+	res, err := n.RawNode.RPCCall(ctx, cd)
+	if err != nil {
+		return nil, err
+	}
+	return res.(*emptypb.Empty), err
+}
+
 // KeyValueService is the server-side API for the KeyValueService Service
 type KeyValueService interface {
 	Write(ctx gorums.ServerCtx, request *WriteRequest) (response *emptypb.Empty, err error)
 	Read(ctx gorums.ServerCtx, request *ReadRequest) (response *ReadResponse, err error)
 	ReadAll(ctx gorums.ServerCtx, request *ReadRequest) (response *ReadAllResponse, err error)
+	Gossip(ctx gorums.ServerCtx, request *GossipMessage) (response *emptypb.Empty, err error)
+	PrintState(ctx gorums.ServerCtx, request *emptypb.Empty) (response *emptypb.Empty, err error)
 }
 
 func RegisterKeyValueServiceServer(srv *gorums.Server, impl KeyValueService) {
@@ -233,6 +265,18 @@ func RegisterKeyValueServiceServer(srv *gorums.Server, impl KeyValueService) {
 		req := in.Message.(*ReadRequest)
 		defer ctx.Release()
 		resp, err := impl.ReadAll(ctx, req)
+		gorums.SendMessage(ctx, finished, gorums.WrapMessage(in.Metadata, resp, err))
+	})
+	srv.RegisterHandler("protos.KeyValueService.Gossip", func(ctx gorums.ServerCtx, in *gorums.Message, finished chan<- *gorums.Message) {
+		req := in.Message.(*GossipMessage)
+		defer ctx.Release()
+		resp, err := impl.Gossip(ctx, req)
+		gorums.SendMessage(ctx, finished, gorums.WrapMessage(in.Metadata, resp, err))
+	})
+	srv.RegisterHandler("protos.KeyValueService.PrintState", func(ctx gorums.ServerCtx, in *gorums.Message, finished chan<- *gorums.Message) {
+		req := in.Message.(*emptypb.Empty)
+		defer ctx.Release()
+		resp, err := impl.PrintState(ctx, req)
 		gorums.SendMessage(ctx, finished, gorums.WrapMessage(in.Metadata, resp, err))
 	})
 }

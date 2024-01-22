@@ -7,6 +7,7 @@ import (
 	"github.com/vidarandrebo/oncetree/protos"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/protobuf/types/known/emptypb"
 	"log"
 	"time"
 )
@@ -14,7 +15,6 @@ import (
 type Client struct {
 	manager *protos.Manager
 	config  *protos.Configuration
-	id      string
 }
 
 func NewClient(id string, nodes []string) *Client {
@@ -30,23 +30,26 @@ func NewClient(id string, nodes []string) *Client {
 		log.Fatalln("failed to create gorums client gorumsConfig")
 	}
 	client := Client{
-		id:      id,
 		config:  cfg,
 		manager: manager,
 	}
 	return &client
 }
 func (c *Client) Run() {
-	_, err := c.config.Nodes()[0].Write(context.Background(), &protos.WriteRequest{
-		Key:   99,
-		Value: 100})
-	if err != nil {
-		fmt.Println(err)
+	for _, node := range c.config.Nodes() {
+		_, err := node.Write(context.Background(), &protos.WriteRequest{
+			Key:   10,
+			Value: 10})
+		if err != nil {
+			fmt.Println(err)
+		}
 	}
-	response, err := c.config.Nodes()[0].Read(context.Background(), &protos.ReadRequest{Key: 99})
-	if err == nil {
-		fmt.Println(response)
-	} else {
-		fmt.Println(err)
+	time.Sleep(5 * time.Second)
+
+	for _, node := range c.config.Nodes() {
+		_, err := node.PrintState(context.Background(), &emptypb.Empty{})
+		if err != nil {
+			log.Fatalln(err)
+		}
 	}
 }

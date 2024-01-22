@@ -3,7 +3,9 @@ proto_src := $(shell find . -type f -name '*.proto')
 proto_go := $(proto_src:%.proto=%.pb.go)
 gorums_go := $(proto_src:%.proto=%_gorums.pb.go)
 
-build:
+
+
+build: protos
 	go build -o bin/oncetreenode cmd/oncetreenode/main.go
 	go build -o bin/oncetreeclient cmd/oncetreeclient/main.go
 
@@ -12,6 +14,9 @@ test:
 
 format:
 	find . -type f -name "*.go" | xargs gofmt -w
+
+clean:
+	rm -rf bin/
 
 .PHONY: protos
 

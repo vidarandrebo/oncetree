@@ -17,6 +17,10 @@ var nodeMap = map[string]string{
 }
 
 func main() {
-	client := oncetree.NewClient("test-client", []string{":5000"})
+	nodeAddrs := make([]string, 0)
+	for _, nodeID := range nodeIDs {
+		nodeAddrs = append(nodeAddrs, nodeMap[nodeID])
+	}
+	client := oncetree.NewClient("test-client", nodeAddrs)
 	client.Run()
 }

@@ -43,16 +43,16 @@ func (kvs KeyValueStorage) ReadValueFromNode(nodeAddr string, key int64) (int64,
 	}
 }
 
-// ReadValueExceptNode reads and combines the stored values from all neighbouring nodes except the input addr
+// ReadValueExceptNode reads and combines the stored values from all neighbouring nodes except the input ID
 //
 // Will return (0, nil) and not (0, err) if only the excluded node has a value for the input key
-func (kvs KeyValueStorage) ReadValueExceptNode(exceptAddr string, key int64) (int64, error) {
+func (kvs KeyValueStorage) ReadValueExceptNode(exceptID string, key int64) (int64, error) {
 	agg := int64(0)
 	found := false
-	for nodeAddr, values := range kvs {
+	for nodeID, values := range kvs {
 		if value, exists := values[key]; exists {
 			found = true
-			if exceptAddr != nodeAddr {
+			if exceptID != nodeID {
 				agg += value
 			}
 		}
@@ -65,18 +65,18 @@ func (kvs KeyValueStorage) ReadValueExceptNode(exceptAddr string, key int64) (in
 
 // WriteValue writes the input value to storage
 //
-// Creates a new address key if it does not exist.
-// Overwrites existing key value pairs for a given address.
+// Creates a new nodeID key if it does not exist.
+// Overwrites existing key value pairs for a given nodeID.
 // Returns true if value has changed.
-func (kvs KeyValueStorage) WriteValue(addr string, key int64, value int64) bool {
-	if _, containsNode := kvs[addr]; !containsNode {
-		kvs[addr] = make(map[int64]int64)
+func (kvs KeyValueStorage) WriteValue(nodeID string, key int64, value int64) bool {
+	if _, containsNode := kvs[nodeID]; !containsNode {
+		kvs[nodeID] = make(map[int64]int64)
 	}
-	if storedValue, exists := kvs[addr][key]; exists {
+	if storedValue, exists := kvs[nodeID][key]; exists {
 		if storedValue == value {
 			return false
 		}
 	}
-	kvs[addr][key] = value
+	kvs[nodeID][key] = value
 	return true
 }

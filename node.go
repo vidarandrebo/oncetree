@@ -1,6 +1,7 @@
 package oncetree
 
 import (
+	"context"
 	"fmt"
 	"github.com/relab/gorums"
 	"github.com/vidarandrebo/oncetree/protos"
@@ -152,6 +153,9 @@ func (n *Node) startGorumsServer(addr string) {
 
 func (n *Node) Write(ctx gorums.ServerCtx, request *protos.WriteRequest) (response *emptypb.Empty, err error) {
 	n.keyValueStorage.WriteValue(n.id, request.GetKey(), request.GetValue())
+	go func() {
+		n.SendGossip(n.id, request.GetKey())
+	}()
 	return &emptypb.Empty{}, nil
 }
 
@@ -169,4 +173,48 @@ func (n *Node) ReadAll(ctx gorums.ServerCtx, request *protos.ReadRequest) (respo
 		return &protos.ReadAllResponse{Value: nil}, err
 	}
 	return &protos.ReadAllResponse{Value: map[string]int64{n.id: value}}, nil
+}
+func (n *Node) PrintState(ctx gorums.ServerCtx, request *emptypb.Empty) (response *emptypb.Empty, err error) {
+	n.logger.Println(n.keyValueStorage)
+	return &emptypb.Empty{}, nil
+}
+
+func (n *Node) Gossip(ctx gorums.ServerCtx, request *protos.GossipMessage) (response *emptypb.Empty, err error) {
+	n.logger.Printf("Received gossip %v", request)
+	n.keyValueStorage.WriteValue(request.GetNodeID(), request.GetKey(), request.GetValue())
+	go func() {
+		n.SendGossip(request.NodeID, request.GetKey())
+	}()
+	return &emptypb.Empty{}, nil
+}
+
+func (n *Node) SendGossip(originID string, key int64) {
+	for _, node := range n.gorumsConfig.Nodes() {
+		nodeID, err := n.resolveNodeIDFromAddress(node.Address())
+		if err != nil {
+			continue
+		}
+		// skip returning to originID and sending to self.
+		if nodeID == originID || nodeID == n.id {
+			continue
+		}
+		value, err := n.keyValueStorage.ReadValueExceptNode(nodeID, key)
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		_, err = node.Gossip(ctx, &protos.GossipMessage{NodeID: n.id, Key: key, Value: value})
+		cancel()
+	}
+}
+
+func (n *Node) resolveNodeIDFromAddress(address string) (string, error) {
+	for id, parentAddress := range n.parent {
+		if parentAddress == address {
+			return id, nil
+		}
+	}
+	for id, childAddress := range n.children {
+		if childAddress == address {
+			return id, nil
+		}
+	}
+	return "", fmt.Errorf("node with address %s not found", address)
 }
