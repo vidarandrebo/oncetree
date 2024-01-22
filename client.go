@@ -17,7 +17,7 @@ type Client struct {
 	config  *protos.Configuration
 }
 
-func NewClient(id string, nodes []string) *Client {
+func NewClient(nodes []string) *Client {
 	manager := protos.NewManager(
 		gorums.WithDialTimeout(1*time.Second),
 		gorums.WithGrpcDialOptions(
@@ -38,7 +38,7 @@ func NewClient(id string, nodes []string) *Client {
 func (c *Client) Run() {
 	for _, node := range c.config.Nodes() {
 		_, err := node.Write(context.Background(), &protos.WriteRequest{
-			Key:   10,
+			Key:   20,
 			Value: 10})
 		if err != nil {
 			fmt.Println(err)

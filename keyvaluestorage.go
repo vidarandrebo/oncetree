@@ -4,11 +4,20 @@ import (
 	"fmt"
 )
 
+type TimestampedValue struct {
+	Value     int64
+	Timestamp int64
+}
+
+func (tsv TimestampedValue) String() string {
+	return fmt.Sprintf("(Value: %d, ts: %d)", tsv.Value, tsv.Timestamp)
+}
+
 // KeyValueStorage
 // Stores key value pairs for the node and it's neighbours
 //
 // NodeAddress -> Key -> Value
-type KeyValueStorage map[string]map[int64]int64
+type KeyValueStorage map[string]map[int64]TimestampedValue
 
 func NewKeyValueStorage() *KeyValueStorage {
 	return &KeyValueStorage{}
@@ -21,7 +30,7 @@ func (kvs KeyValueStorage) ReadValue(key int64) (int64, error) {
 	for _, values := range kvs {
 		if value, exists := values[key]; exists {
 			found = true
-			agg += value
+			agg += value.Value
 		}
 	}
 	if found {
@@ -34,7 +43,7 @@ func (kvs KeyValueStorage) ReadValue(key int64) (int64, error) {
 func (kvs KeyValueStorage) ReadValueFromNode(nodeAddr string, key int64) (int64, error) {
 	if nodeValues, containsNode := kvs[nodeAddr]; containsNode {
 		if value, containsKey := nodeValues[key]; containsKey {
-			return value, nil
+			return value.Value, nil
 		} else {
 			return 0, fmt.Errorf("keyvaluestorage does not contain key %v", key)
 		}
@@ -53,7 +62,7 @@ func (kvs KeyValueStorage) ReadValueExceptNode(exceptID string, key int64) (int6
 		if value, exists := values[key]; exists {
 			found = true
 			if exceptID != nodeID {
-				agg += value
+				agg += value.Value
 			}
 		}
 	}
@@ -67,16 +76,16 @@ func (kvs KeyValueStorage) ReadValueExceptNode(exceptID string, key int64) (int6
 //
 // Creates a new nodeID key if it does not exist.
 // Overwrites existing key value pairs for a given nodeID.
-// Returns true if value has changed.
-func (kvs KeyValueStorage) WriteValue(nodeID string, key int64, value int64) bool {
+// Returns true if the new value has a newer timestamp than last
+func (kvs KeyValueStorage) WriteValue(nodeID string, key int64, value int64, timestamp int64) bool {
 	if _, containsNode := kvs[nodeID]; !containsNode {
-		kvs[nodeID] = make(map[int64]int64)
+		kvs[nodeID] = make(map[int64]TimestampedValue)
 	}
 	if storedValue, exists := kvs[nodeID][key]; exists {
-		if storedValue == value {
+		if storedValue.Timestamp >= timestamp {
 			return false
 		}
 	}
-	kvs[nodeID][key] = value
+	kvs[nodeID][key] = TimestampedValue{Value: value, Timestamp: timestamp}
 	return true
 }

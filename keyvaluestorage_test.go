@@ -7,27 +7,27 @@ import (
 
 var keyValueStorage = KeyValueStorage{
 	"addr1": {
-		1: 12,
-		2: 13,
-		3: 14,
-		5: 40,
+		1: TimestampedValue{Value: 12, Timestamp: 3},
+		2: TimestampedValue{Value: 13, Timestamp: 3},
+		3: TimestampedValue{Value: 14, Timestamp: 3},
+		5: TimestampedValue{Value: 40, Timestamp: 3},
 	},
 	"addr2": {
-		1: 15,
-		2: 16,
-		3: 0,
-		4: 77,
+		1: TimestampedValue{Value: 15, Timestamp: 3},
+		2: TimestampedValue{Value: 16, Timestamp: 3},
+		3: TimestampedValue{Value: 0, Timestamp: 3},
+		4: TimestampedValue{Value: 77, Timestamp: 3},
 	},
 	"addr3": {
-		1: 44,
-		2: 88,
-		4: -77,
+		1: TimestampedValue{Value: 44, Timestamp: 3},
+		2: TimestampedValue{Value: 88, Timestamp: 3},
+		4: TimestampedValue{Value: -77, Timestamp: 3},
 	},
 	"addr4": {
-		1: 15,
-		2: 16,
-		3: 0,
-		4: 55,
+		1: TimestampedValue{Value: 15, Timestamp: 3},
+		2: TimestampedValue{Value: 16, Timestamp: 3},
+		3: TimestampedValue{Value: 0, Timestamp: 3},
+		4: TimestampedValue{Value: 55, Timestamp: 3},
 	},
 }
 
@@ -88,23 +88,26 @@ func TestKeyValueStorage_WriteValue_NoAddr(t *testing.T) {
 	testAddr := "addr55"
 	testKey := int64(1)
 	testValue := int64(10)
-	valueChanged := keyValueStorage.WriteValue(testAddr, testKey, testValue)
-	assert.Equal(t, keyValueStorage[testAddr][testKey], testValue)
+	valueChanged := keyValueStorage.WriteValue(testAddr, testKey, testValue, 4)
+	assert.Equal(t, keyValueStorage[testAddr][testKey], TimestampedValue{Value: testValue, Timestamp: 4})
 	assert.True(t, valueChanged)
 }
 func TestKeyValueStorage_WriteValue_OverWrite(t *testing.T) {
 	testAddr := "addr1"
 	testKey := int64(2)
 	testValue := int64(15)
-	valueChanged := keyValueStorage.WriteValue(testAddr, testKey, testValue)
-	assert.Equal(t, keyValueStorage[testAddr][testKey], testValue)
+	valueChanged := keyValueStorage.WriteValue(testAddr, testKey, testValue, 4)
+	assert.Equal(t, keyValueStorage[testAddr][testKey], TimestampedValue{Value: testValue, Timestamp: 4})
 	assert.True(t, valueChanged)
 }
+
+// Value should not change if ts is lower than the stored value
 func TestKeyValueStorage_WriteValue_NoChange(t *testing.T) {
 	testAddr := "addr2"
 	testKey := int64(2)
-	testValue := int64(16)
-	valueChanged := keyValueStorage.WriteValue(testAddr, testKey, testValue)
-	assert.Equal(t, keyValueStorage[testAddr][testKey], testValue)
+	testValue := int64(99)
+	testTs := int64(2)
+	valueChanged := keyValueStorage.WriteValue(testAddr, testKey, testValue, testTs)
+	assert.Equal(t, keyValueStorage[testAddr][testKey], TimestampedValue{Value: 16, Timestamp: 3})
 	assert.False(t, valueChanged)
 }
