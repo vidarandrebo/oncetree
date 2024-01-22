@@ -20,8 +20,8 @@ type Node struct {
 	id              string
 	parent          map[string]string
 	children        map[string]string
-	manager         *protos.Manager
-	config          *protos.Configuration
+	gorumsManager   *protos.Manager
+	gorumsConfig    *protos.Configuration
 	logger          *log.Logger
 }
 
@@ -39,12 +39,12 @@ func NewNode(id string, rpcAddr string) *Node {
 		id:              id,
 		parent:          make(map[string]string),
 		children:        make(map[string]string),
-		config:          nil,
-		manager:         manager,
+		gorumsConfig:    nil,
+		gorumsManager:   manager,
 		logger:          log.New(os.Stderr, fmt.Sprintf("NodeID: %s ", id), log.Ltime|log.Lmsgprefix),
 	}
 }
-func (n *Node) AllNeighbourAddrs() []string {
+func (n *Node) allNeighbourAddrs() []string {
 	neighbours := make([]string, 0)
 	for _, address := range n.parent {
 		neighbours = append(neighbours, address)
@@ -54,7 +54,7 @@ func (n *Node) AllNeighbourAddrs() []string {
 	}
 	return neighbours
 }
-func (n *Node) AllNeighbourIDs() []string {
+func (n *Node) allNeighbourIDs() []string {
 	IDs := make([]string, 0)
 	for id, _ := range n.parent {
 		IDs = append(IDs, id)
@@ -66,19 +66,21 @@ func (n *Node) AllNeighbourIDs() []string {
 }
 
 // TryUpdateGorumsConfig will try to update the configuration 5 times with increasing timeout between attempts
+//
+// Non blocking fn
 func (n *Node) TryUpdateGorumsConfig() {
 	go func() {
 		delays := []int64{1, 2, 3, 4, 5}
 		for _, delay := range delays {
-			nodes := n.AllNeighbourAddrs()
-			cfg, err := n.manager.NewConfiguration(&QSpec{numNodes: len(nodes)}, gorums.WithNodeList(nodes))
+			nodes := n.allNeighbourAddrs()
+			cfg, err := n.gorumsManager.NewConfiguration(&QSpec{numNodes: len(nodes)}, gorums.WithNodeList(nodes))
 			if err == nil {
 				n.logger.Println("Created new gorums configuration")
-				n.config = cfg
+				n.gorumsConfig = cfg
 				break
 			}
 			if err != nil {
-				n.logger.Printf("failed to create gorums config, retrying in %d seconds", delay)
+				n.logger.Printf("failed to create gorums gorumsConfig, retrying in %d seconds", delay)
 				time.Sleep(time.Second * time.Duration(delay))
 			}
 		}
@@ -117,7 +119,7 @@ func (n *Node) SetNeighboursFromNodeMap(nodeIDs []string, nodes map[string]strin
 	n.logger.Printf("parent: %v", n.parent)
 	n.logger.Printf("children: %v", n.children)
 }
-func (n *Node) IsRoot() bool {
+func (n *Node) isRoot() bool {
 	return len(n.parent) == 0
 }
 
@@ -149,7 +151,7 @@ func (n *Node) startGorumsServer(addr string) {
 }
 
 func (n *Node) Write(ctx gorums.ServerCtx, request *protos.WriteRequest) (response *emptypb.Empty, err error) {
-	n.keyValueStorage.WriteValue(request.GetID(), request.GetKey(), request.GetValue())
+	n.keyValueStorage.WriteValue(n.id, request.GetKey(), request.GetValue())
 	return &emptypb.Empty{}, nil
 }
 

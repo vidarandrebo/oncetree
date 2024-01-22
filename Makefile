@@ -8,7 +8,7 @@ build:
 	go build -o bin/oncetreeclient cmd/oncetreeclient/main.go
 
 test:
-	go test -v ./...
+	go test ./...
 
 format:
 	find . -type f -name "*.go" | xargs gofmt -w

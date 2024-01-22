@@ -31,7 +31,7 @@ func TestNode_SetNeighboursFromNodeList_Parent(t *testing.T) {
 func TestNode_SetNeighboursFromNodeList_NoParent(t *testing.T) {
 	node := NewNode("0", ":0")
 	node.SetNeighboursFromNodeMap(nodeIDs, nodeMap)
-	assert.True(t, node.IsRoot())
+	assert.True(t, node.isRoot())
 }
 func TestNode_SetNeighboursFromNodeList_Children(t *testing.T) {
 	node := NewNode("3", ":3")

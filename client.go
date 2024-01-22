@@ -27,7 +27,7 @@ func NewClient(id string, nodes []string) *Client {
 	)
 	cfg, err := manager.NewConfiguration(&QSpec{numNodes: len(nodes)}, gorums.WithNodeList(nodes))
 	if err != nil {
-		log.Fatalln("failed to create gorums client config")
+		log.Fatalln("failed to create gorums client gorumsConfig")
 	}
 	client := Client{
 		id:      id,
@@ -38,7 +38,6 @@ func NewClient(id string, nodes []string) *Client {
 }
 func (c *Client) Run() {
 	_, err := c.config.Nodes()[0].Write(context.Background(), &protos.WriteRequest{
-		ID:    c.id,
 		Key:   99,
 		Value: 100})
 	if err != nil {
