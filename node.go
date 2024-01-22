@@ -11,6 +11,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"sync"
 	"time"
 )
 
@@ -24,6 +25,8 @@ type Node struct {
 	gorumsManager   *protos.Manager
 	gorumsConfig    *protos.Configuration
 	logger          *log.Logger
+	timestamp       int64
+	mut             sync.Mutex
 }
 
 func NewNode(id string, rpcAddr string) *Node {
@@ -43,6 +46,7 @@ func NewNode(id string, rpcAddr string) *Node {
 		gorumsConfig:    nil,
 		gorumsManager:   manager,
 		logger:          log.New(os.Stderr, fmt.Sprintf("NodeID: %s ", id), log.Ltime|log.Lmsgprefix),
+		timestamp:       0,
 	}
 }
 func (n *Node) allNeighbourAddrs() []string {
@@ -76,7 +80,7 @@ func (n *Node) TryUpdateGorumsConfig() {
 			nodes := n.allNeighbourAddrs()
 			cfg, err := n.gorumsManager.NewConfiguration(&QSpec{numNodes: len(nodes)}, gorums.WithNodeList(nodes))
 			if err == nil {
-				n.logger.Println("Created new gorums configuration")
+				n.logger.Println("created new gorums configuration")
 				n.gorumsConfig = cfg
 				break
 			}
@@ -152,7 +156,10 @@ func (n *Node) startGorumsServer(addr string) {
 }
 
 func (n *Node) Write(ctx gorums.ServerCtx, request *protos.WriteRequest) (response *emptypb.Empty, err error) {
-	n.keyValueStorage.WriteValue(n.id, request.GetKey(), request.GetValue())
+	n.mut.Lock()
+	n.timestamp++
+	n.keyValueStorage.WriteValue(n.id, request.GetKey(), request.GetValue(), n.timestamp)
+	n.mut.Unlock()
 	go func() {
 		n.SendGossip(n.id, request.GetKey())
 	}()
@@ -180,15 +187,23 @@ func (n *Node) PrintState(ctx gorums.ServerCtx, request *emptypb.Empty) (respons
 }
 
 func (n *Node) Gossip(ctx gorums.ServerCtx, request *protos.GossipMessage) (response *emptypb.Empty, err error) {
-	n.logger.Printf("Received gossip %v", request)
-	n.keyValueStorage.WriteValue(request.GetNodeID(), request.GetKey(), request.GetValue())
-	go func() {
-		n.SendGossip(request.NodeID, request.GetKey())
-	}()
+	n.logger.Printf("received gossip %v", request)
+	n.mut.Lock()
+	updated := n.keyValueStorage.WriteValue(request.GetNodeID(), request.GetKey(), request.GetValue(), request.GetTimestamp())
+	n.mut.Unlock()
+	if updated {
+		go func() {
+			n.SendGossip(request.NodeID, request.GetKey())
+		}()
+	}
 	return &emptypb.Empty{}, nil
 }
 
 func (n *Node) SendGossip(originID string, key int64) {
+	n.mut.Lock()
+	n.timestamp++
+	ts := n.timestamp // make sure all messages has same ts
+	n.mut.Unlock()
 	for _, node := range n.gorumsConfig.Nodes() {
 		nodeID, err := n.resolveNodeIDFromAddress(node.Address())
 		if err != nil {
@@ -199,8 +214,10 @@ func (n *Node) SendGossip(originID string, key int64) {
 			continue
 		}
 		value, err := n.keyValueStorage.ReadValueExceptNode(nodeID, key)
+		// TODO handle err
 		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
-		_, err = node.Gossip(ctx, &protos.GossipMessage{NodeID: n.id, Key: key, Value: value})
+		_, err = node.Gossip(ctx, &protos.GossipMessage{NodeID: n.id, Key: key, Value: value, Timestamp: ts})
+		// TODO handle err
 		cancel()
 	}
 }
