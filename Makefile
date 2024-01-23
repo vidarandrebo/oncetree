@@ -13,10 +13,15 @@ test:
 	go test ./...
 
 format:
-	find . -type f -name "*.go" | xargs gofmt -w
+	find . -type f -name "*.go" | xargs gofumpt -w
 
 clean:
 	rm -rf bin/
+
+deps:
+	go install mvdan.cc/gofumpt@latest
+	go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+	go install github.com/relab/gorums/cmd/protoc-gen-gorums@latest
 
 .PHONY: protos
 
