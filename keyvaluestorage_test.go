@@ -1,8 +1,9 @@
 package oncetree
 
 import (
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 var keyValueStorage = KeyValueStorage{
@@ -36,11 +37,13 @@ func TestKeyValueStorage_ReadValueFromNode(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, int64(12), value)
 }
+
 func TestKeyValueStorage_ReadValueFromNode_NoAddr(t *testing.T) {
 	value, err := keyValueStorage.ReadValueFromNode("addr99", 1)
 	assert.Equal(t, int64(0), value)
 	assert.NotNil(t, err)
 }
+
 func TestKeyValueStorage_ReadValueFromNode_NoKey(t *testing.T) {
 	value, err := keyValueStorage.ReadValueFromNode("addr1", 99)
 	assert.Equal(t, int64(0), value)
@@ -62,6 +65,7 @@ func TestKeyValueStorage_ReadValue_NoKey(t *testing.T) {
 	assert.NotNil(t, err)
 	assert.Equal(t, int64(0), value)
 }
+
 func TestKeyValueStorage_ReadValueExceptNode(t *testing.T) {
 	value, err := keyValueStorage.ReadValueExceptNode("addr1", 4)
 	assert.Nil(t, err)
@@ -92,6 +96,7 @@ func TestKeyValueStorage_WriteValue_NoAddr(t *testing.T) {
 	assert.Equal(t, keyValueStorage[testAddr][testKey], TimestampedValue{Value: testValue, Timestamp: 4})
 	assert.True(t, valueChanged)
 }
+
 func TestKeyValueStorage_WriteValue_OverWrite(t *testing.T) {
 	testAddr := "addr1"
 	testKey := int64(2)
