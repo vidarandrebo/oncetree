@@ -27,6 +27,7 @@ type Node struct {
 	gorumsConfig    *protos.Configuration
 	logger          *log.Logger
 	timestamp       int64
+	failureDetector *FailureDetector
 	mut             sync.Mutex
 }
 
@@ -38,6 +39,7 @@ func NewNode(id string, rpcAddr string) *Node {
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
 		),
 	)
+	logger := log.New(os.Stderr, fmt.Sprintf("NodeID: %s ", id), log.Ltime|log.Lmsgprefix)
 	return &Node{
 		rpcAddr:         rpcAddr,
 		keyValueStorage: NewKeyValueStorage(),
@@ -46,7 +48,8 @@ func NewNode(id string, rpcAddr string) *Node {
 		children:        make(map[string]string),
 		gorumsConfig:    nil,
 		gorumsManager:   manager,
-		logger:          log.New(os.Stderr, fmt.Sprintf("NodeID: %s ", id), log.Ltime|log.Lmsgprefix),
+		failureDetector: NewFailureDetector(logger),
+		logger:          logger,
 		timestamp:       0,
 	}
 }
@@ -54,11 +57,12 @@ func NewNode(id string, rpcAddr string) *Node {
 // Run starts the main loop of the node
 func (n *Node) Run() {
 	n.startGorumsServer(n.rpcAddr)
+	n.failureDetector.Run()
 
 	for {
 		select {
 		case <-time.After(time.Second * 1):
-			n.SendHeartbeat()
+			n.sendHeartbeat()
 		}
 	}
 }
@@ -97,6 +101,7 @@ func (n *Node) TryUpdateGorumsConfig() {
 			if err == nil {
 				n.logger.Println("created new gorums configuration")
 				n.gorumsConfig = cfg
+				n.failureDetector.RegisterNodes(n.allNeighbourIDs())
 				break
 			}
 			if err != nil {
@@ -164,7 +169,7 @@ func (n *Node) Write(ctx gorums.ServerCtx, request *protos.WriteRequest) (respon
 	n.keyValueStorage.WriteValue(n.id, request.GetKey(), request.GetValue(), n.timestamp)
 	n.mut.Unlock()
 	go func() {
-		n.SendGossip(n.id, request.GetKey())
+		n.sendGossip(n.id, request.GetKey())
 	}()
 	return &emptypb.Empty{}, nil
 }
@@ -197,17 +202,18 @@ func (n *Node) Gossip(ctx gorums.ServerCtx, request *protos.GossipMessage) (resp
 	n.mut.Unlock()
 	if updated {
 		go func() {
-			n.SendGossip(request.NodeID, request.GetKey())
+			n.sendGossip(request.NodeID, request.GetKey())
 		}()
 	}
 	return &emptypb.Empty{}, nil
 }
 
 func (n *Node) Heartbeat(ctx gorums.ServerCtx, request *protos.HeartbeatMessage) {
-	n.logger.Printf("received heartbeat from %s", request.GetNodeID())
+	// n.logger.Printf("received heartbeat from %s", request.GetNodeID())
+	n.failureDetector.RegisterHeartbeat(request.GetNodeID())
 }
 
-func (n *Node) SendGossip(originID string, key int64) {
+func (n *Node) sendGossip(originID string, key int64) {
 	n.mut.Lock()
 	n.timestamp++
 	ts := n.timestamp // make sure all messages has same ts
@@ -230,7 +236,7 @@ func (n *Node) SendGossip(originID string, key int64) {
 	}
 }
 
-func (n *Node) SendHeartbeat() {
+func (n *Node) sendHeartbeat() {
 	go func() {
 		if n.gorumsConfig == nil {
 			return
