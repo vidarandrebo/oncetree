@@ -30,12 +30,19 @@ message GossipMessage {
   int64 Timestamp = 4;
 }
 
+message HeartbeatMessage {
+  string NodeID = 1;
+}
+
 
 service KeyValueService {
   rpc Write(WriteRequest) returns (google.protobuf.Empty) {}
   rpc Read(ReadRequest) returns (ReadResponse) {}
   rpc ReadAll(ReadRequest) returns (ReadAllResponse) {
     option (gorums.quorumcall) = true;
+  }
+  rpc Heartbeat(HeartbeatMessage) returns (google.protobuf.Empty) {
+    option (gorums.multicast) = true;
   }
   rpc Gossip(GossipMessage) returns(google.protobuf.Empty){}
   rpc PrintState(google.protobuf.Empty) returns (google.protobuf.Empty){}
