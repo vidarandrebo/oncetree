@@ -1,11 +1,10 @@
 package oncetree
 
 type (
-	AllowedHashSetTypes            interface{ string | int | struct{} }
-	HashSet[T AllowedHashSetTypes] map[T]struct{}
+	HashSet[T comparable] map[T]struct{}
 )
 
-func NewHashSet[T AllowedHashSetTypes]() HashSet[T] {
+func NewHashSet[T comparable]() HashSet[T] {
 	return make(HashSet[T])
 }
 
