@@ -21,13 +21,12 @@ type Node struct {
 	keyValueStorage *KeyValueStorage
 	gorumsServer    *gorums.Server
 	id              string
-	parent          map[string]string
-	children        map[string]string
 	gorumsManager   *protos.Manager
 	gorumsConfig    *protos.Configuration
 	logger          *log.Logger
 	timestamp       int64
 	failureDetector *FailureDetector
+	neighbours      map[string]*Neighbour
 	mut             sync.Mutex
 }
 
@@ -43,9 +42,8 @@ func NewNode(id string, rpcAddr string) *Node {
 	return &Node{
 		rpcAddr:         rpcAddr,
 		keyValueStorage: NewKeyValueStorage(),
+		neighbours:      make(map[string]*Neighbour),
 		id:              id,
-		parent:          make(map[string]string),
-		children:        make(map[string]string),
 		gorumsConfig:    nil,
 		gorumsManager:   manager,
 		failureDetector: NewFailureDetector(logger),
@@ -68,22 +66,16 @@ func (n *Node) Run() {
 }
 
 func (n *Node) allNeighbourAddrs() []string {
-	neighbours := make([]string, 0)
-	for _, address := range n.parent {
-		neighbours = append(neighbours, address)
+	addresses := make([]string, 0)
+	for _, neighbour := range n.neighbours {
+		addresses = append(addresses, neighbour.Address)
 	}
-	for _, address := range n.children {
-		neighbours = append(neighbours, address)
-	}
-	return neighbours
+	return addresses
 }
 
 func (n *Node) allNeighbourIDs() []string {
 	IDs := make([]string, 0)
-	for id := range n.parent {
-		IDs = append(IDs, id)
-	}
-	for id := range n.children {
+	for id := range n.neighbours {
 		IDs = append(IDs, id)
 	}
 	return IDs
@@ -118,11 +110,13 @@ func (n *Node) SetNeighboursFromNodeMap(nodeIDs []string, nodes map[string]strin
 	for i, nodeID := range nodeIDs {
 		// find n as a child of current node -> current node is n's parent
 		if len(nodeIDs) > (2*i+1) && nodeIDs[2*i+1] == n.id {
-			n.parent[nodeID] = nodes[nodeID]
+			// n.parent[nodeID] = nodes[nodeID]
+			n.neighbours[nodeID] = NewNeighbour(nodes[nodeID], Parent)
 			continue
 		}
 		if len(nodeIDs) > (2*i+2) && nodeIDs[2*i+2] == n.id {
-			n.parent[nodeID] = nodes[nodeID]
+			// n.parent[nodeID] = nodes[nodeID]
+			n.neighbours[nodeID] = NewNeighbour(nodes[nodeID], Parent)
 			continue
 		}
 
@@ -130,22 +124,24 @@ func (n *Node) SetNeighboursFromNodeMap(nodeIDs []string, nodes map[string]strin
 		if nodeID == n.id {
 			if len(nodeIDs) > (2*i + 1) {
 				childId := nodeIDs[2*i+1]
-				n.children[childId] = nodes[childId]
+				// n.children[childId] = nodes[childId]
+				n.neighbours[childId] = NewNeighbour(nodes[childId], Child)
 			}
 			if len(nodeIDs) > (2*i + 2) {
 				childId := nodeIDs[2*i+2]
-				n.children[childId] = nodes[childId]
+				// n.children[childId] = nodes[childId]
+				n.neighbours[childId] = NewNeighbour(nodes[childId], Child)
 			}
 			continue
 		}
 
 	}
-	n.logger.Printf("parent: %v", n.parent)
-	n.logger.Printf("children: %v", n.children)
+	n.logger.Printf("parent: %v", n.GetParent())
+	n.logger.Printf("children: %v", n.GetChildren())
 }
 
 func (n *Node) isRoot() bool {
-	return len(n.parent) == 0
+	return n.GetParent() == nil
 }
 
 func (n *Node) startGorumsServer(addr string) {
@@ -249,15 +245,50 @@ func (n *Node) sendHeartbeat() {
 }
 
 func (n *Node) resolveNodeIDFromAddress(address string) (string, error) {
-	for id, parentAddress := range n.parent {
-		if parentAddress == address {
-			return id, nil
-		}
-	}
-	for id, childAddress := range n.children {
-		if childAddress == address {
+	for id, neighbour := range n.neighbours {
+		if neighbour.Address == address {
 			return id, nil
 		}
 	}
 	return "", fmt.Errorf("node with address %s not found", address)
+}
+
+func (n *Node) GetChildren() []*Neighbour {
+	children := make([]*Neighbour, 0)
+	for _, neighbour := range n.neighbours {
+		if neighbour.Role == Child {
+			children = append(children, neighbour)
+		}
+	}
+	return children
+}
+
+func (n *Node) GetParent() *Neighbour {
+	for _, neighbour := range n.neighbours {
+		if neighbour.Role == Parent {
+			return neighbour
+		}
+	}
+	return nil
+}
+
+type NodeRole int
+
+const (
+	Parent NodeRole = iota
+	Child
+)
+
+type Neighbour struct {
+	Address string
+	Group   map[string]string
+	Role    NodeRole
+}
+
+func NewNeighbour(address string, role NodeRole) *Neighbour {
+	return &Neighbour{
+		Address: address,
+		Group:   make(map[string]string),
+		Role:    role,
+	}
 }
