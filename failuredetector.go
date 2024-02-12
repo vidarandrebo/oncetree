@@ -2,19 +2,17 @@ package oncetree
 
 import (
 	"log"
-	"sync"
 	"time"
 )
 
 // FailureDetector is an implementation of EventuallyPerfectFailureDetector from
 // "Introduction to Reliable and Secure Distributed Programming, second edition"
 type FailureDetector struct {
-	nodes     HashSet[string]
-	alive     HashSet[string]
-	suspected HashSet[string]
+	nodes     *ConcurrentHashSet[string]
+	alive     *ConcurrentHashSet[string]
+	suspected *ConcurrentHashSet[string]
 	delay     int
 	logger    *log.Logger
-	mut       sync.Mutex
 }
 
 func NewFailureDetector(logger *log.Logger) *FailureDetector {
@@ -28,9 +26,7 @@ func NewFailureDetector(logger *log.Logger) *FailureDetector {
 }
 
 func (fd *FailureDetector) RegisterHeartbeat(nodeID string) {
-	fd.mut.Lock()
 	fd.alive.Add(nodeID)
-	fd.mut.Unlock()
 }
 
 func (fd *FailureDetector) RegisterNode(nodeID string) {
@@ -62,12 +58,12 @@ func (fd *FailureDetector) Run() {
 
 func (fd *FailureDetector) timeout() {
 	// double delay if nodes are in both alive and suspected sets
-	if len(fd.alive.Intersection(fd.suspected)) > 0 {
+	if fd.alive.Intersection(fd.suspected).Len() > 0 {
 		fd.delay *= 2
 		fd.logger.Printf("increase fd delay to %d s", fd.delay)
 	}
 
-	for nodeID := range fd.nodes {
+	for _, nodeID := range fd.nodes.Values() {
 		if !fd.alive.Contains(nodeID) && !fd.suspected.Contains(nodeID) {
 			fd.suspected.Add(nodeID)
 			fd.logger.Printf("suspect node %v", nodeID)
@@ -79,7 +75,5 @@ func (fd *FailureDetector) timeout() {
 		}
 	}
 
-	fd.mut.Lock()
 	fd.alive = NewHashSet[string]()
-	fd.mut.Unlock()
 }

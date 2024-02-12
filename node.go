@@ -54,7 +54,15 @@ func NewNode(id string, rpcAddr string) *Node {
 // Run starts the main loop of the node
 func (n *Node) Run() {
 	n.startGorumsServer(n.rpcAddr)
+	err := n.UpdateGorumsConfig()
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	n.failureDetector.RegisterNodes(n.allNeighbourIDs())
 	n.failureDetector.Run()
+	n.shareGroupMembers()
 
 	for {
 		select {
@@ -80,28 +88,24 @@ func (n *Node) allNeighbourIDs() []string {
 	return IDs
 }
 
-// TryUpdateGorumsConfig will try to update the configuration 5 times with increasing timeout between attempts
+// UpdateGorumsConfig will try to update the configuration 5 times with increasing timeout between attempts
 //
 // Non blocking fn
-func (n *Node) TryUpdateGorumsConfig() {
-	go func() {
-		delays := []int64{1, 2, 3, 4, 5}
-		for _, delay := range delays {
-			nodes := n.allNeighbourAddrs()
-			cfg, err := n.gorumsManager.NewConfiguration(&QSpec{numNodes: len(nodes)}, gorums.WithNodeList(nodes))
-			if err == nil {
-				n.logger.Println("created new gorums configuration")
-				n.gorumsConfig = cfg
-				n.failureDetector.RegisterNodes(n.allNeighbourIDs())
-				n.shareGroupMembers()
-				break
-			}
-			if err != nil {
-				n.logger.Printf("failed to create gorums gorumsConfig, retrying in %d seconds", delay)
-				time.Sleep(time.Second * time.Duration(delay))
-			}
+func (n *Node) UpdateGorumsConfig() error {
+	for delay := 1; delay < 10; delay++ {
+		nodes := n.allNeighbourAddrs()
+		cfg, err := n.gorumsManager.NewConfiguration(&QSpec{numNodes: len(nodes)}, gorums.WithNodeList(nodes))
+		if err == nil {
+			n.logger.Println("created new gorums configuration")
+			n.gorumsConfig = cfg
+			return nil
 		}
-	}()
+		if err != nil {
+			n.logger.Printf("failed to create gorums gorumsConfig, retrying in %d seconds", delay)
+			time.Sleep(time.Second * time.Duration(delay))
+		}
+	}
+	return fmt.Errorf("failed to create configuration with the following addresses %v", n.allNeighbourAddrs())
 }
 
 // SetNeighboursFromNodeMap assumes a binary tree as slice where a nodes children are at index 2i+1 and 2i+2
