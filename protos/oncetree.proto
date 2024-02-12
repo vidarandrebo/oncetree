@@ -23,6 +23,12 @@ message WriteRequest {
   int64 Value = 2;
 }
 
+message GroupInfo {
+  string NodeID = 1;
+  string NeighbourID = 2;
+  string NeighbourAddress = 3;
+}
+
 message GossipMessage {
   string NodeID = 1;
   int64 Key = 2;
@@ -42,6 +48,9 @@ service KeyValueService {
     option (gorums.quorumcall) = true;
   }
   rpc Heartbeat(HeartbeatMessage) returns (google.protobuf.Empty) {
+    option (gorums.multicast) = true;
+  }
+  rpc SetGroupMember(GroupInfo) returns (google.protobuf.Empty) {
     option (gorums.multicast) = true;
   }
   rpc Gossip(GossipMessage) returns(google.protobuf.Empty){}

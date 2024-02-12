@@ -9,7 +9,6 @@ package protos
 import (
 	context "context"
 	fmt "fmt"
-
 	gorums "github.com/relab/gorums"
 	encoding "google.golang.org/grpc/encoding"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -160,6 +159,20 @@ func (c *Configuration) Heartbeat(ctx context.Context, in *HeartbeatMessage, opt
 	c.RawConfiguration.Multicast(ctx, cd, opts...)
 }
 
+// Reference imports to suppress errors if they are not otherwise used.
+var _ emptypb.Empty
+
+// SetGroupMember is a quorum call invoked on all nodes in configuration c,
+// with the same argument in, and returns a combined result.
+func (c *Configuration) SetGroupMember(ctx context.Context, in *GroupInfo, opts ...gorums.CallOption) {
+	cd := gorums.QuorumCallData{
+		Message: in,
+		Method:  "protos.KeyValueService.SetGroupMember",
+	}
+
+	c.RawConfiguration.Multicast(ctx, cd, opts...)
+}
+
 // QuorumSpec is the interface of quorum functions for KeyValueService.
 type QuorumSpec interface {
 	gorums.ConfigOption
@@ -260,6 +273,7 @@ type KeyValueService interface {
 	Read(ctx gorums.ServerCtx, request *ReadRequest) (response *ReadResponse, err error)
 	ReadAll(ctx gorums.ServerCtx, request *ReadRequest) (response *ReadAllResponse, err error)
 	Heartbeat(ctx gorums.ServerCtx, request *HeartbeatMessage)
+	SetGroupMember(ctx gorums.ServerCtx, request *GroupInfo)
 	Gossip(ctx gorums.ServerCtx, request *GossipMessage) (response *emptypb.Empty, err error)
 	PrintState(ctx gorums.ServerCtx, request *emptypb.Empty) (response *emptypb.Empty, err error)
 }
@@ -287,6 +301,11 @@ func RegisterKeyValueServiceServer(srv *gorums.Server, impl KeyValueService) {
 		req := in.Message.(*HeartbeatMessage)
 		defer ctx.Release()
 		impl.Heartbeat(ctx, req)
+	})
+	srv.RegisterHandler("protos.KeyValueService.SetGroupMember", func(ctx gorums.ServerCtx, in *gorums.Message, _ chan<- *gorums.Message) {
+		req := in.Message.(*GroupInfo)
+		defer ctx.Release()
+		impl.SetGroupMember(ctx, req)
 	})
 	srv.RegisterHandler("protos.KeyValueService.Gossip", func(ctx gorums.ServerCtx, in *gorums.Message, finished chan<- *gorums.Message) {
 		req := in.Message.(*GossipMessage)

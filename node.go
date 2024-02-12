@@ -13,7 +13,6 @@ import (
 	"github.com/vidarandrebo/oncetree/protos"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 type Node struct {
@@ -94,6 +93,7 @@ func (n *Node) TryUpdateGorumsConfig() {
 				n.logger.Println("created new gorums configuration")
 				n.gorumsConfig = cfg
 				n.failureDetector.RegisterNodes(n.allNeighbourIDs())
+				n.shareGroupMembers()
 				break
 			}
 			if err != nil {
@@ -110,12 +110,10 @@ func (n *Node) SetNeighboursFromNodeMap(nodeIDs []string, nodes map[string]strin
 	for i, nodeID := range nodeIDs {
 		// find n as a child of current node -> current node is n's parent
 		if len(nodeIDs) > (2*i+1) && nodeIDs[2*i+1] == n.id {
-			// n.parent[nodeID] = nodes[nodeID]
 			n.neighbours[nodeID] = NewNeighbour(nodes[nodeID], Parent)
 			continue
 		}
 		if len(nodeIDs) > (2*i+2) && nodeIDs[2*i+2] == n.id {
-			// n.parent[nodeID] = nodes[nodeID]
 			n.neighbours[nodeID] = NewNeighbour(nodes[nodeID], Parent)
 			continue
 		}
@@ -124,12 +122,10 @@ func (n *Node) SetNeighboursFromNodeMap(nodeIDs []string, nodes map[string]strin
 		if nodeID == n.id {
 			if len(nodeIDs) > (2*i + 1) {
 				childId := nodeIDs[2*i+1]
-				// n.children[childId] = nodes[childId]
 				n.neighbours[childId] = NewNeighbour(nodes[childId], Child)
 			}
 			if len(nodeIDs) > (2*i + 2) {
 				childId := nodeIDs[2*i+2]
-				// n.children[childId] = nodes[childId]
 				n.neighbours[childId] = NewNeighbour(nodes[childId], Child)
 			}
 			continue
@@ -157,56 +153,6 @@ func (n *Node) startGorumsServer(addr string) {
 			n.logger.Panicf("gorums server could not serve key value server")
 		}
 	}()
-}
-
-func (n *Node) Write(ctx gorums.ServerCtx, request *protos.WriteRequest) (response *emptypb.Empty, err error) {
-	n.mut.Lock()
-	n.timestamp++
-	n.keyValueStorage.WriteValue(n.id, request.GetKey(), request.GetValue(), n.timestamp)
-	n.mut.Unlock()
-	go func() {
-		n.sendGossip(n.id, request.GetKey())
-	}()
-	return &emptypb.Empty{}, nil
-}
-
-func (n *Node) Read(ctx gorums.ServerCtx, request *protos.ReadRequest) (response *protos.ReadResponse, err error) {
-	value, err := n.keyValueStorage.ReadValue(request.Key)
-	if err != nil {
-		return &protos.ReadResponse{Value: 0}, err
-	}
-	return &protos.ReadResponse{Value: value}, nil
-}
-
-func (n *Node) ReadAll(ctx gorums.ServerCtx, request *protos.ReadRequest) (response *protos.ReadAllResponse, err error) {
-	value, err := n.keyValueStorage.ReadValue(request.Key)
-	if err != nil {
-		return &protos.ReadAllResponse{Value: nil}, err
-	}
-	return &protos.ReadAllResponse{Value: map[string]int64{n.id: value}}, nil
-}
-
-func (n *Node) PrintState(ctx gorums.ServerCtx, request *emptypb.Empty) (response *emptypb.Empty, err error) {
-	n.logger.Println(n.keyValueStorage)
-	return &emptypb.Empty{}, nil
-}
-
-func (n *Node) Gossip(ctx gorums.ServerCtx, request *protos.GossipMessage) (response *emptypb.Empty, err error) {
-	n.logger.Printf("received gossip %v", request)
-	n.mut.Lock()
-	updated := n.keyValueStorage.WriteValue(request.GetNodeID(), request.GetKey(), request.GetValue(), request.GetTimestamp())
-	n.mut.Unlock()
-	if updated {
-		go func() {
-			n.sendGossip(request.NodeID, request.GetKey())
-		}()
-	}
-	return &emptypb.Empty{}, nil
-}
-
-func (n *Node) Heartbeat(ctx gorums.ServerCtx, request *protos.HeartbeatMessage) {
-	// n.logger.Printf("received heartbeat from %s", request.GetNodeID())
-	n.failureDetector.RegisterHeartbeat(request.GetNodeID())
 }
 
 func (n *Node) sendGossip(originID string, key int64) {
@@ -270,6 +216,27 @@ func (n *Node) GetParent() *Neighbour {
 		}
 	}
 	return nil
+}
+
+func (n *Node) shareGroupMembers() {
+	for id, _ := range n.neighbours {
+		n.sendSetGroupMember(id)
+	}
+}
+
+func (n *Node) sendSetGroupMember(neighbourId string) {
+	neighbour, ok := n.neighbours[neighbourId]
+	if !ok {
+		return
+	}
+	request := &protos.GroupInfo{
+		NodeID:           n.id,
+		NeighbourID:      neighbourId,
+		NeighbourAddress: neighbour.Address,
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	n.gorumsConfig.SetGroupMember(ctx, request)
 }
 
 type NodeRole int
