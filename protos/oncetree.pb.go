@@ -7,12 +7,13 @@
 package protos
 
 import (
+	reflect "reflect"
+	sync "sync"
+
 	_ "github.com/relab/gorums"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
-	reflect "reflect"
-	sync "sync"
 )
 
 const (
@@ -487,18 +488,20 @@ func file_protos_oncetree_proto_rawDescGZIP() []byte {
 	return file_protos_oncetree_proto_rawDescData
 }
 
-var file_protos_oncetree_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
-var file_protos_oncetree_proto_goTypes = []interface{}{
-	(*ReadRequest)(nil),      // 0: protos.ReadRequest
-	(*ReadResponse)(nil),     // 1: protos.ReadResponse
-	(*ReadAllResponse)(nil),  // 2: protos.ReadAllResponse
-	(*WriteRequest)(nil),     // 3: protos.WriteRequest
-	(*GroupInfo)(nil),        // 4: protos.GroupInfo
-	(*GossipMessage)(nil),    // 5: protos.GossipMessage
-	(*HeartbeatMessage)(nil), // 6: protos.HeartbeatMessage
-	nil,                      // 7: protos.ReadAllResponse.ValueEntry
-	(*emptypb.Empty)(nil),    // 8: google.protobuf.Empty
-}
+var (
+	file_protos_oncetree_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+	file_protos_oncetree_proto_goTypes  = []interface{}{
+		(*ReadRequest)(nil),      // 0: protos.ReadRequest
+		(*ReadResponse)(nil),     // 1: protos.ReadResponse
+		(*ReadAllResponse)(nil),  // 2: protos.ReadAllResponse
+		(*WriteRequest)(nil),     // 3: protos.WriteRequest
+		(*GroupInfo)(nil),        // 4: protos.GroupInfo
+		(*GossipMessage)(nil),    // 5: protos.GossipMessage
+		(*HeartbeatMessage)(nil), // 6: protos.HeartbeatMessage
+		nil,                      // 7: protos.ReadAllResponse.ValueEntry
+		(*emptypb.Empty)(nil),    // 8: google.protobuf.Empty
+	}
+)
 var file_protos_oncetree_proto_depIdxs = []int32{
 	7, // 0: protos.ReadAllResponse.Value:type_name -> protos.ReadAllResponse.ValueEntry
 	3, // 1: protos.KeyValueService.Write:input_type -> protos.WriteRequest

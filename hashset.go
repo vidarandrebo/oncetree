@@ -20,6 +20,7 @@ func (s HashSet[T]) Contains(key T) bool {
 func (s HashSet[T]) Remove(key T) {
 	delete(s, key)
 }
+
 func (s HashSet[T]) Values() []T {
 	values := make([]T, 0)
 	for value := range s {
@@ -27,6 +28,7 @@ func (s HashSet[T]) Values() []T {
 	}
 	return values
 }
+
 func (s HashSet[T]) Clear() {
 	for k := range s {
 		delete(s, k)
@@ -57,6 +59,7 @@ func NewConcurrentHashSet[T comparable]() *ConcurrentHashSet[T] {
 		hashSet: make(HashSet[T]),
 	}
 }
+
 func (s *ConcurrentHashSet[T]) Len() int {
 	s.mut.RLock()
 	defer s.mut.RUnlock()
@@ -68,6 +71,7 @@ func (s *ConcurrentHashSet[T]) Values() []T {
 	defer s.mut.RUnlock()
 	return s.hashSet.Values()
 }
+
 func (s *ConcurrentHashSet[T]) Add(key T) {
 	s.mut.Lock()
 	defer s.mut.Unlock()
@@ -100,7 +104,6 @@ func (s *ConcurrentHashSet[T]) Intersection(b *ConcurrentHashSet[T]) *Concurrent
 	return &ConcurrentHashSet[T]{
 		hashSet: s.hashSet.Intersection(b.hashSet),
 	}
-
 }
 
 func (s *ConcurrentHashSet[T]) Union(b *ConcurrentHashSet[T]) ConcurrentHashSet[T] {

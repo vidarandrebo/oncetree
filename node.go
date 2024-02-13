@@ -223,7 +223,7 @@ func (n *Node) GetParent() *Neighbour {
 }
 
 func (n *Node) shareGroupMembers() {
-	for id, _ := range n.neighbours {
+	for id := range n.neighbours {
 		n.sendSetGroupMember(id)
 	}
 }
