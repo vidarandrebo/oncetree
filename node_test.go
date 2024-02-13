@@ -25,11 +25,11 @@ var (
 func TestNode_SetNeighboursFromNodeList_Parent(t *testing.T) {
 	node := NewNode("3", ":3")
 	node.SetNeighboursFromNodeMap(nodeIDs, nodeMap)
-	assert.Equal(t, map[string]string{"1": ":1"}, node.parent)
+	assert.Equal(t, &Neighbour{Address: ":1", Group: make(map[string]string), Role: Parent}, node.GetParent())
 
 	node = NewNode("5", ":5")
 	node.SetNeighboursFromNodeMap(nodeIDs, nodeMap)
-	assert.Equal(t, map[string]string{"2": ":2"}, node.parent)
+	assert.Equal(t, &Neighbour{Address: ":2", Group: make(map[string]string), Role: Parent}, node.GetParent())
 }
 
 func TestNode_SetNeighboursFromNodeList_NoParent(t *testing.T) {
@@ -41,11 +41,14 @@ func TestNode_SetNeighboursFromNodeList_NoParent(t *testing.T) {
 func TestNode_SetNeighboursFromNodeList_Children(t *testing.T) {
 	node := NewNode("3", ":3")
 	node.SetNeighboursFromNodeMap(nodeIDs, nodeMap)
-	assert.Equal(t, map[string]string{"7": ":7", "8": ":8"}, node.children)
+
+	foundChildren := node.GetChildren()
+	assert.Contains(t, foundChildren, &Neighbour{Address: ":7", Group: make(map[string]string), Role: Child})
+	assert.Contains(t, foundChildren, &Neighbour{Address: ":8", Group: make(map[string]string), Role: Child})
 }
 
 func TestNode_SetNeighboursFromNodeList_NoChildren(t *testing.T) {
 	node := NewNode("5", ":5")
 	node.SetNeighboursFromNodeMap(nodeIDs, nodeMap)
-	assert.Equal(t, 0, len(node.children))
+	assert.Equal(t, 0, len(node.GetChildren()))
 }

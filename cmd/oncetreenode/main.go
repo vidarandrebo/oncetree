@@ -30,7 +30,6 @@ func main() {
 		go func() {
 			node := oncetree.NewNode(id, nodeMap[id])
 			node.SetNeighboursFromNodeMap(nodeIDs, nodeMap)
-			node.TryUpdateGorumsConfig()
 			node.Run()
 			wg.Done()
 		}()
