@@ -17,9 +17,9 @@ type FailureDetector struct {
 
 func NewFailureDetector(logger *log.Logger) *FailureDetector {
 	return &FailureDetector{
-		nodes:     NewHashSet[string](),
-		alive:     NewHashSet[string](),
-		suspected: NewHashSet[string](),
+		nodes:     NewConcurrentHashSet[string](),
+		alive:     NewConcurrentHashSet[string](),
+		suspected: NewConcurrentHashSet[string](),
 		delay:     1,
 		logger:    logger,
 	}
@@ -75,5 +75,5 @@ func (fd *FailureDetector) timeout() {
 		}
 	}
 
-	fd.alive = NewHashSet[string]()
+	fd.alive.Clear()
 }
