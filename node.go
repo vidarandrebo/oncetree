@@ -237,6 +237,7 @@ func (n *Node) sendSetGroupMember(neighbourId string) {
 		NodeID:           n.id,
 		NeighbourID:      neighbourId,
 		NeighbourAddress: neighbour.Address,
+		NeighbourRole:    int64(neighbour.Role),
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -252,14 +253,26 @@ const (
 
 type Neighbour struct {
 	Address string
-	Group   map[string]string
+	Group   map[string]*GroupMember
 	Role    NodeRole
 }
 
 func NewNeighbour(address string, role NodeRole) *Neighbour {
 	return &Neighbour{
 		Address: address,
-		Group:   make(map[string]string),
+		Group:   make(map[string]*GroupMember),
+		Role:    role,
+	}
+}
+
+type GroupMember struct {
+	Address string
+	Role    NodeRole
+}
+
+func NewGroupMember(address string, role NodeRole) *GroupMember {
+	return &GroupMember{
+		Address: address,
 		Role:    role,
 	}
 }
