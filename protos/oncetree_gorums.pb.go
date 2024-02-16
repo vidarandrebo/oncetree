@@ -9,6 +9,7 @@ package protos
 import (
 	context "context"
 	fmt "fmt"
+
 	gorums "github.com/relab/gorums"
 	encoding "google.golang.org/grpc/encoding"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -173,6 +174,48 @@ func (c *Configuration) SetGroupMember(ctx context.Context, in *GroupInfo, opts 
 	c.RawConfiguration.Multicast(ctx, cd, opts...)
 }
 
+// Reference imports to suppress errors if they are not otherwise used.
+var _ emptypb.Empty
+
+// Prepare is a quorum call invoked on all nodes in configuration c,
+// with the same argument in, and returns a combined result.
+func (c *Configuration) Prepare(ctx context.Context, in *PrepareMessage, opts ...gorums.CallOption) {
+	cd := gorums.QuorumCallData{
+		Message: in,
+		Method:  "protos.KeyValueService.Prepare",
+	}
+
+	c.RawConfiguration.Multicast(ctx, cd, opts...)
+}
+
+// Reference imports to suppress errors if they are not otherwise used.
+var _ emptypb.Empty
+
+// Accept is a quorum call invoked on all nodes in configuration c,
+// with the same argument in, and returns a combined result.
+func (c *Configuration) Accept(ctx context.Context, in *AcceptMessage, opts ...gorums.CallOption) {
+	cd := gorums.QuorumCallData{
+		Message: in,
+		Method:  "protos.KeyValueService.Accept",
+	}
+
+	c.RawConfiguration.Multicast(ctx, cd, opts...)
+}
+
+// Reference imports to suppress errors if they are not otherwise used.
+var _ emptypb.Empty
+
+// Learn is a quorum call invoked on all nodes in configuration c,
+// with the same argument in, and returns a combined result.
+func (c *Configuration) Learn(ctx context.Context, in *LearnMessage, opts ...gorums.CallOption) {
+	cd := gorums.QuorumCallData{
+		Message: in,
+		Method:  "protos.KeyValueService.Learn",
+	}
+
+	c.RawConfiguration.Multicast(ctx, cd, opts...)
+}
+
 // QuorumSpec is the interface of quorum functions for KeyValueService.
 type QuorumSpec interface {
 	gorums.ConfigOption
@@ -267,6 +310,21 @@ func (n *Node) PrintState(ctx context.Context, in *emptypb.Empty) (resp *emptypb
 	return res.(*emptypb.Empty), err
 }
 
+// Promise is a quorum call invoked on all nodes in configuration c,
+// with the same argument in, and returns a combined result.
+func (n *Node) Promise(ctx context.Context, in *PromiseMessage) (resp *emptypb.Empty, err error) {
+	cd := gorums.CallData{
+		Message: in,
+		Method:  "protos.KeyValueService.Promise",
+	}
+
+	res, err := n.RawNode.RPCCall(ctx, cd)
+	if err != nil {
+		return nil, err
+	}
+	return res.(*emptypb.Empty), err
+}
+
 // KeyValueService is the server-side API for the KeyValueService Service
 type KeyValueService interface {
 	Write(ctx gorums.ServerCtx, request *WriteRequest) (response *emptypb.Empty, err error)
@@ -276,6 +334,10 @@ type KeyValueService interface {
 	SetGroupMember(ctx gorums.ServerCtx, request *GroupInfo)
 	Gossip(ctx gorums.ServerCtx, request *GossipMessage) (response *emptypb.Empty, err error)
 	PrintState(ctx gorums.ServerCtx, request *emptypb.Empty) (response *emptypb.Empty, err error)
+	Prepare(ctx gorums.ServerCtx, request *PrepareMessage)
+	Promise(ctx gorums.ServerCtx, request *PromiseMessage) (response *emptypb.Empty, err error)
+	Accept(ctx gorums.ServerCtx, request *AcceptMessage)
+	Learn(ctx gorums.ServerCtx, request *LearnMessage)
 }
 
 func RegisterKeyValueServiceServer(srv *gorums.Server, impl KeyValueService) {
@@ -318,6 +380,27 @@ func RegisterKeyValueServiceServer(srv *gorums.Server, impl KeyValueService) {
 		defer ctx.Release()
 		resp, err := impl.PrintState(ctx, req)
 		gorums.SendMessage(ctx, finished, gorums.WrapMessage(in.Metadata, resp, err))
+	})
+	srv.RegisterHandler("protos.KeyValueService.Prepare", func(ctx gorums.ServerCtx, in *gorums.Message, _ chan<- *gorums.Message) {
+		req := in.Message.(*PrepareMessage)
+		defer ctx.Release()
+		impl.Prepare(ctx, req)
+	})
+	srv.RegisterHandler("protos.KeyValueService.Promise", func(ctx gorums.ServerCtx, in *gorums.Message, finished chan<- *gorums.Message) {
+		req := in.Message.(*PromiseMessage)
+		defer ctx.Release()
+		resp, err := impl.Promise(ctx, req)
+		gorums.SendMessage(ctx, finished, gorums.WrapMessage(in.Metadata, resp, err))
+	})
+	srv.RegisterHandler("protos.KeyValueService.Accept", func(ctx gorums.ServerCtx, in *gorums.Message, _ chan<- *gorums.Message) {
+		req := in.Message.(*AcceptMessage)
+		defer ctx.Release()
+		impl.Accept(ctx, req)
+	})
+	srv.RegisterHandler("protos.KeyValueService.Learn", func(ctx gorums.ServerCtx, in *gorums.Message, _ chan<- *gorums.Message) {
+		req := in.Message.(*LearnMessage)
+		defer ctx.Release()
+		impl.Learn(ctx, req)
 	})
 }
 

@@ -26,6 +26,7 @@ type Node struct {
 	timestamp       int64
 	failureDetector *FailureDetector
 	neighbours      map[string]*Neighbour
+	paxos           *Paxos
 	mut             sync.Mutex
 }
 
@@ -46,6 +47,7 @@ func NewNode(id string, rpcAddr string) *Node {
 		gorumsConfig:    nil,
 		gorumsManager:   manager,
 		failureDetector: NewFailureDetector(logger),
+		paxos:           NewPaxos(),
 		logger:          logger,
 		timestamp:       0,
 	}
