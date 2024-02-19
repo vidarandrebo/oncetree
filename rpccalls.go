@@ -33,11 +33,6 @@ func (n *Node) ReadAll(ctx gorums.ServerCtx, request *protos.ReadRequest) (respo
 	return &protos.ReadAllResponse{Value: map[string]int64{n.id: value}}, nil
 }
 
-func (n *Node) SetGroupMember(ctx gorums.ServerCtx, request *protos.GroupInfo) {
-	n.logger.Printf("Adding node %s to group %s", request.NeighbourID, request.NodeID)
-	n.neighbours[request.NodeID].Group[request.NeighbourID] = NewGroupMember(request.NeighbourAddress, NodeRole(request.NeighbourRole))
-}
-
 func (n *Node) PrintState(ctx gorums.ServerCtx, request *emptypb.Empty) (response *emptypb.Empty, err error) {
 	n.logger.Println(n.keyValueStorage)
 	return &emptypb.Empty{}, nil

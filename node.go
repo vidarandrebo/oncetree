@@ -104,7 +104,7 @@ func (n *Node) UpdateGorumsConfig() error {
 			time.Sleep(time.Second * time.Duration(delay))
 		}
 	}
-	return fmt.Errorf("failed to create configuration with the following addresses %v", n.allNeighbourAddrs())
+	return fmt.Errorf("failed to create configuration with the following addresses %v", n.nodeManager.AllNeighbourAddrs())
 }
 
 // SetNeighboursFromNodeMap assumes a binary tree as slice where a nodes children are at index 2i+1 and 2i+2
@@ -113,11 +113,12 @@ func (n *Node) SetNeighboursFromNodeMap(nodeIDs []string, nodes map[string]strin
 	for i, nodeID := range nodeIDs {
 		// find n as a child of current node -> current node is n's parent
 		if len(nodeIDs) > (2*i+1) && nodeIDs[2*i+1] == n.id {
-			n.neighbours[nodeID] = NewNeighbour(nodes[nodeID], Parent)
+			//n.neighbours[nodeID] = NewNeighbour(nodes[nodeID], Parent)
+			n.nodeManager.SetNeighbour(nodeID, NewNeighbour(nodes[nodeID], Parent))
 			continue
 		}
 		if len(nodeIDs) > (2*i+2) && nodeIDs[2*i+2] == n.id {
-			n.neighbours[nodeID] = NewNeighbour(nodes[nodeID], Parent)
+			n.nodeManager.SetNeighbour(nodeID, NewNeighbour(nodes[nodeID], Parent))
 			continue
 		}
 
@@ -125,22 +126,24 @@ func (n *Node) SetNeighboursFromNodeMap(nodeIDs []string, nodes map[string]strin
 		if nodeID == n.id {
 			if len(nodeIDs) > (2*i + 1) {
 				childId := nodeIDs[2*i+1]
-				n.neighbours[childId] = NewNeighbour(nodes[childId], Child)
+				n.nodeManager.SetNeighbour(childId, NewNeighbour(nodes[childId], Child))
+				//n.neighbours[childId] = NewNeighbour(nodes[childId], Child)
 			}
 			if len(nodeIDs) > (2*i + 2) {
 				childId := nodeIDs[2*i+2]
-				n.neighbours[childId] = NewNeighbour(nodes[childId], Child)
+				n.nodeManager.SetNeighbour(childId, NewNeighbour(nodes[childId], Child))
+				//n.neighbours[childId] = NewNeighbour(nodes[childId], Child)
 			}
 			continue
 		}
 
 	}
-	n.logger.Printf("parent: %v", n.GetParent())
-	n.logger.Printf("children: %v", n.GetChildren())
+	n.logger.Printf("parent: %v", n.nodeManager.GetParent())
+	n.logger.Printf("children: %v", n.nodeManager.GetChildren())
 }
 
 func (n *Node) isRoot() bool {
-	return n.GetParent() == nil
+	return n.nodeManager.GetParent() == nil
 }
 
 func (n *Node) startGorumsServer(addr string) {
@@ -164,7 +167,7 @@ func (n *Node) sendGossip(originID string, key int64) {
 	ts := n.timestamp // make sure all messages has same ts
 	n.mut.Unlock()
 	for _, node := range n.gorumsConfig.Nodes() {
-		nodeID, err := n.resolveNodeIDFromAddress(node.Address())
+		nodeID, err := n.nodeManager.resolveNodeIDFromAddress(node.Address())
 		if err != nil {
 			continue
 		}
@@ -194,42 +197,15 @@ func (n *Node) sendHeartbeat() {
 	}()
 }
 
-func (n *Node) resolveNodeIDFromAddress(address string) (string, error) {
-	for id, neighbour := range n.neighbours {
-		if neighbour.Address == address {
-			return id, nil
-		}
-	}
-	return "", fmt.Errorf("node with address %s not found", address)
-}
-
-func (n *Node) GetChildren() []*Neighbour {
-	children := make([]*Neighbour, 0)
-	for _, neighbour := range n.neighbours {
-		if neighbour.Role == Child {
-			children = append(children, neighbour)
-		}
-	}
-	return children
-}
-
-func (n *Node) GetParent() *Neighbour {
-	for _, neighbour := range n.neighbours {
-		if neighbour.Role == Parent {
-			return neighbour
-		}
-	}
-	return nil
-}
-
 func (n *Node) shareGroupMembers() {
-	for id := range n.neighbours {
+	for id := range n.nodeManager.GetNeighbours() {
 		n.sendSetGroupMember(id)
 	}
 }
 
 func (n *Node) sendSetGroupMember(neighbourId string) {
-	neighbour, ok := n.neighbours[neighbourId]
+	//neighbour, ok := n.neighbours[neighbourId]
+	neighbour, ok := n.nodeManager.GetNeighbour(neighbourId)
 	if !ok {
 		return
 	}
