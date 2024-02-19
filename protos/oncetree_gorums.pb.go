@@ -325,6 +325,21 @@ func (n *Node) Promise(ctx context.Context, in *PromiseMessage) (resp *emptypb.E
 	return res.(*emptypb.Empty), err
 }
 
+// Crash is a quorum call invoked on all nodes in configuration c,
+// with the same argument in, and returns a combined result.
+func (n *Node) Crash(ctx context.Context, in *emptypb.Empty) (resp *emptypb.Empty, err error) {
+	cd := gorums.CallData{
+		Message: in,
+		Method:  "protos.KeyValueService.Crash",
+	}
+
+	res, err := n.RawNode.RPCCall(ctx, cd)
+	if err != nil {
+		return nil, err
+	}
+	return res.(*emptypb.Empty), err
+}
+
 // KeyValueService is the server-side API for the KeyValueService Service
 type KeyValueService interface {
 	Write(ctx gorums.ServerCtx, request *WriteRequest) (response *emptypb.Empty, err error)
@@ -338,6 +353,7 @@ type KeyValueService interface {
 	Promise(ctx gorums.ServerCtx, request *PromiseMessage) (response *emptypb.Empty, err error)
 	Accept(ctx gorums.ServerCtx, request *AcceptMessage)
 	Learn(ctx gorums.ServerCtx, request *LearnMessage)
+	Crash(ctx gorums.ServerCtx, request *emptypb.Empty) (response *emptypb.Empty, err error)
 }
 
 func RegisterKeyValueServiceServer(srv *gorums.Server, impl KeyValueService) {
@@ -401,6 +417,12 @@ func RegisterKeyValueServiceServer(srv *gorums.Server, impl KeyValueService) {
 		req := in.Message.(*LearnMessage)
 		defer ctx.Release()
 		impl.Learn(ctx, req)
+	})
+	srv.RegisterHandler("protos.KeyValueService.Crash", func(ctx gorums.ServerCtx, in *gorums.Message, finished chan<- *gorums.Message) {
+		req := in.Message.(*emptypb.Empty)
+		defer ctx.Release()
+		resp, err := impl.Crash(ctx, req)
+		gorums.SendMessage(ctx, finished, gorums.WrapMessage(in.Metadata, resp, err))
 	})
 }
 

@@ -19,7 +19,7 @@ func (cm *ConcurrentMap[TKey, TVal]) Set(key TKey, value TVal) {
 	cm.data[key] = value
 }
 
-func (cm *ConcurrentMap[TKey, TVal]) Get(key TKey, value TVal) (TVal, bool) {
+func (cm *ConcurrentMap[TKey, TVal]) Get(key TKey) (TVal, bool) {
 	cm.rwLock.RLock()
 	defer cm.rwLock.RUnlock()
 	value, ok := cm.data[key]

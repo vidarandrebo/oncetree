@@ -1,7 +1,9 @@
 package oncetree
 
 import (
+	"context"
 	"log"
+	"sync"
 	"time"
 )
 
@@ -58,29 +60,29 @@ func (fd *FailureDetector) Suspect(nodeID string) {
 	}
 }
 
-func (fd *FailureDetector) Run() {
+func (fd *FailureDetector) Run(ctx context.Context, wg *sync.WaitGroup) {
 	go func() {
+	mainLoop:
 		for {
 			select {
 			case <-time.After(time.Duration(fd.delay) * time.Second):
 				fd.timeout()
+			case <-ctx.Done():
+				break mainLoop
+
 			}
 		}
+		fd.logger.Println("Exiting failure detector")
+		wg.Done()
 	}()
 }
 
 func (fd *FailureDetector) timeout() {
-	// double delay if nodes are in both alive and suspected sets
-
 	for _, nodeID := range fd.nodes.Values() {
 		if !fd.alive.Contains(nodeID) && !fd.suspected.Contains(nodeID) {
 			fd.suspected.Add(nodeID)
 			fd.logger.Printf("suspect node %v", nodeID)
 			fd.Suspect(nodeID)
-		} else if fd.alive.Contains(nodeID) && fd.suspected.Contains(nodeID) {
-			fd.suspected.Delete(nodeID)
-			fd.logger.Printf("restore node %v", nodeID)
-			// trigger restore
 		}
 	}
 

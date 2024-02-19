@@ -6,11 +6,12 @@ import (
 	"log"
 	"time"
 
+	"google.golang.org/protobuf/types/known/emptypb"
+
 	"github.com/relab/gorums"
 	"github.com/vidarandrebo/oncetree/protos"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 type Client struct {
@@ -38,21 +39,25 @@ func NewClient(nodes []string) *Client {
 }
 
 func (c *Client) Run() {
-	for _, node := range c.config.Nodes() {
-		_, err := node.Write(context.Background(), &protos.WriteRequest{
-			Key:   20,
-			Value: 10,
-		})
-		if err != nil {
-			fmt.Println(err)
-		}
-	}
-	time.Sleep(5 * time.Second)
+	//	for _, node := range c.config.Nodes() {
+	//		_, err := node.Write(context.Background(), &protos.WriteRequest{
+	//			Key:   20,
+	//			Value: 10,
+	//		})
+	//		if err != nil {
+	//			fmt.Println(err)
+	//		}
+	//	}
+	//	time.Sleep(5 * time.Second)
+	//
+	//	for _, node := range c.config.Nodes() {
+	//		_, err := node.PrintState(context.Background(), &emptypb.Empty{})
+	//		if err != nil {
+	//			log.Fatalln(err)
+	//		}
+	//	}
 
-	for _, node := range c.config.Nodes() {
-		_, err := node.PrintState(context.Background(), &emptypb.Empty{})
-		if err != nil {
-			log.Fatalln(err)
-		}
-	}
+	res, err := c.config.Nodes()[0].Crash(context.Background(), &emptypb.Empty{})
+	fmt.Println(res)
+	fmt.Println(err)
 }

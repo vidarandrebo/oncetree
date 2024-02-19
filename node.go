@@ -28,6 +28,7 @@ type Node struct {
 	neighbours      map[string]*Neighbour
 	paxos           *Paxos
 	mut             sync.Mutex
+	stopChan        chan string
 }
 
 func NewNode(id string, rpcAddr string) *Node {
@@ -50,11 +51,15 @@ func NewNode(id string, rpcAddr string) *Node {
 		paxos:           NewPaxos(),
 		logger:          logger,
 		timestamp:       0,
+		stopChan:        make(chan string),
 	}
 }
 
 // Run starts the main loop of the node
 func (n *Node) Run() {
+	ctx, cancel := context.WithCancel(context.Background())
+	wg := sync.WaitGroup{}
+	defer cancel()
 	n.startGorumsServer(n.rpcAddr)
 	err := n.UpdateGorumsConfig()
 	if err != nil {
@@ -63,15 +68,25 @@ func (n *Node) Run() {
 	}
 
 	n.failureDetector.RegisterNodes(n.allNeighbourIDs())
-	n.failureDetector.Run()
+	wg.Add(1)
+	n.failureDetector.Run(ctx, &wg)
 	n.shareGroupMembers()
 
+	nodeExitMessage := ""
+mainLoop:
 	for {
 		select {
 		case <-time.After(time.Second * 1):
 			n.sendHeartbeat()
+		case nodeExitMessage = <-n.stopChan:
+			n.logger.Println("Main loop stopped manually via stop channel")
+			cancel()
+			break mainLoop
 		}
 	}
+	wg.Wait()
+	n.gorumsServer.Stop()
+	n.logger.Printf("Exiting after message \"%s\" on stop channel", nodeExitMessage)
 }
 
 func (n *Node) allNeighbourAddrs() []string {
@@ -178,6 +193,7 @@ func (n *Node) sendGossip(originID string, key int64) {
 		value, err := n.keyValueStorage.ReadValueExceptNode(nodeID, key)
 		// TODO handle err
 		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		ctx.Done()
 		_, err = node.Gossip(ctx, &protos.GossipMessage{NodeID: n.id, Key: key, Value: value, Timestamp: ts})
 		// TODO handle err
 		cancel()
@@ -244,6 +260,10 @@ func (n *Node) sendSetGroupMember(neighbourId string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	n.gorumsConfig.SetGroupMember(ctx, request)
+}
+
+func (n *Node) stop(msg string) {
+	n.stopChan <- msg
 }
 
 type NodeRole int

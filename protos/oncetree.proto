@@ -79,4 +79,5 @@ service KeyValueService {
   rpc Learn(LearnMessage) returns (google.protobuf.Empty) {
     option (gorums.multicast) = true;
   }
+  rpc Crash(google.protobuf.Empty) returns (google.protobuf.Empty) {}
 }

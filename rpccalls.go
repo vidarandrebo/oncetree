@@ -60,3 +60,8 @@ func (n *Node) Heartbeat(ctx gorums.ServerCtx, request *protos.HeartbeatMessage)
 	// n.logger.Printf("received heartbeat from %s", request.GetNodeID())
 	n.failureDetector.RegisterHeartbeat(request.GetNodeID())
 }
+
+func (n *Node) Crash(ctx gorums.ServerCtx, request *emptypb.Empty) (response *emptypb.Empty, err error) {
+	n.stop("crash RPC")
+	return &emptypb.Empty{}, nil
+}
