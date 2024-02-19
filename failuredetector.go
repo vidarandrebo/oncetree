@@ -8,25 +8,26 @@ import (
 // FailureDetector is an implementation of EventuallyPerfectFailureDetector from
 // "Introduction to Reliable and Secure Distributed Programming, second edition"
 type FailureDetector struct {
-	nodes     *ConcurrentHashSet[string]
-	alive     *ConcurrentHashSet[string]
-	suspected *ConcurrentHashSet[string]
-	delay     int
-	logger    *log.Logger
+	nodes       *ConcurrentHashSet[string]
+	alive       *ConcurrentIntegerMap[string]
+	suspected   *ConcurrentHashSet[string]
+	delay       int
+	logger      *log.Logger
+	subscribers []chan<- string
 }
 
 func NewFailureDetector(logger *log.Logger) *FailureDetector {
 	return &FailureDetector{
 		nodes:     NewConcurrentHashSet[string](),
-		alive:     NewConcurrentHashSet[string](),
+		alive:     NewConcurrentIntegerMap[string](),
 		suspected: NewConcurrentHashSet[string](),
-		delay:     1,
+		delay:     5,
 		logger:    logger,
 	}
 }
 
 func (fd *FailureDetector) RegisterHeartbeat(nodeID string) {
-	fd.alive.Add(nodeID)
+	fd.alive.Increment(nodeID, 1)
 }
 
 func (fd *FailureDetector) RegisterNode(nodeID string) {
@@ -40,9 +41,21 @@ func (fd *FailureDetector) RegisterNodes(nodeIDs []string) {
 }
 
 func (fd *FailureDetector) DeregisterNode(nodeID string) {
-	fd.nodes.Remove(nodeID)
-	fd.alive.Remove(nodeID)
-	fd.suspected.Remove(nodeID)
+	fd.nodes.Delete(nodeID)
+	fd.alive.Delete(nodeID)
+	fd.suspected.Delete(nodeID)
+}
+
+func (fd *FailureDetector) Subscribe() <-chan string {
+	channel := make(chan string)
+	fd.subscribers = append(fd.subscribers, channel)
+	return channel
+}
+
+func (fd *FailureDetector) Suspect(nodeID string) {
+	for _, c := range fd.subscribers {
+		c <- nodeID
+	}
 }
 
 func (fd *FailureDetector) Run() {
@@ -58,18 +71,14 @@ func (fd *FailureDetector) Run() {
 
 func (fd *FailureDetector) timeout() {
 	// double delay if nodes are in both alive and suspected sets
-	if fd.alive.Intersection(fd.suspected).Len() > 0 {
-		fd.delay *= 2
-		fd.logger.Printf("increase fd delay to %d s", fd.delay)
-	}
 
 	for _, nodeID := range fd.nodes.Values() {
 		if !fd.alive.Contains(nodeID) && !fd.suspected.Contains(nodeID) {
 			fd.suspected.Add(nodeID)
 			fd.logger.Printf("suspect node %v", nodeID)
-			// trigger suspect operation
+			fd.Suspect(nodeID)
 		} else if fd.alive.Contains(nodeID) && fd.suspected.Contains(nodeID) {
-			fd.suspected.Remove(nodeID)
+			fd.suspected.Delete(nodeID)
 			fd.logger.Printf("restore node %v", nodeID)
 			// trigger restore
 		}
