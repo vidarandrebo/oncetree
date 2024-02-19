@@ -25,8 +25,7 @@ type Node struct {
 	logger          *log.Logger
 	timestamp       int64
 	failureDetector *FailureDetector
-	neighbours      map[string]*Neighbour
-	paxos           *Paxos
+	nodeManager     *NodeManager
 	mut             sync.Mutex
 	stopChan        chan string
 }
@@ -43,12 +42,11 @@ func NewNode(id string, rpcAddr string) *Node {
 	return &Node{
 		rpcAddr:         rpcAddr,
 		keyValueStorage: NewKeyValueStorage(),
-		neighbours:      make(map[string]*Neighbour),
 		id:              id,
 		gorumsConfig:    nil,
 		gorumsManager:   manager,
 		failureDetector: NewFailureDetector(logger),
-		paxos:           NewPaxos(),
+		nodeManager:     NewPaxos(),
 		logger:          logger,
 		timestamp:       0,
 		stopChan:        make(chan string),
@@ -67,7 +65,7 @@ func (n *Node) Run() {
 		return
 	}
 
-	n.failureDetector.RegisterNodes(n.allNeighbourIDs())
+	n.failureDetector.RegisterNodes(n.nodeManager.AllNeighbourIDs())
 	wg.Add(1)
 	n.failureDetector.Run(ctx, &wg)
 	n.shareGroupMembers()
@@ -89,28 +87,12 @@ mainLoop:
 	n.logger.Printf("Exiting after message \"%s\" on stop channel", nodeExitMessage)
 }
 
-func (n *Node) allNeighbourAddrs() []string {
-	addresses := make([]string, 0)
-	for _, neighbour := range n.neighbours {
-		addresses = append(addresses, neighbour.Address)
-	}
-	return addresses
-}
-
-func (n *Node) allNeighbourIDs() []string {
-	IDs := make([]string, 0)
-	for id := range n.neighbours {
-		IDs = append(IDs, id)
-	}
-	return IDs
-}
-
-// UpdateGorumsConfig will try to update the configuration 5 times with increasing timeout between attempts
+// UpdateGorumsConfig will try to update the configuration with increasing timeout between attempts
 //
 // Non blocking fn
 func (n *Node) UpdateGorumsConfig() error {
 	for delay := 1; delay < 10; delay++ {
-		nodes := n.allNeighbourAddrs()
+		nodes := n.nodeManager.AllNeighbourAddrs()
 		cfg, err := n.gorumsManager.NewConfiguration(&QSpec{numNodes: len(nodes)}, gorums.WithNodeList(nodes))
 		if err == nil {
 			n.logger.Println("created new gorums configuration")
