@@ -28,6 +28,7 @@ type Node struct {
 	nodeManager     *NodeManager
 	mut             sync.Mutex
 	stopChan        chan string
+	nodeFailureChan <-chan string
 }
 
 func NewNode(id string, rpcAddr string) *Node {
@@ -46,7 +47,7 @@ func NewNode(id string, rpcAddr string) *Node {
 		gorumsConfig:    nil,
 		gorumsManager:   manager,
 		failureDetector: NewFailureDetector(logger),
-		nodeManager:     NewPaxos(),
+		nodeManager:     NewNodeManager(),
 		logger:          logger,
 		timestamp:       0,
 		stopChan:        make(chan string),
@@ -66,6 +67,7 @@ func (n *Node) Run() {
 	}
 
 	n.failureDetector.RegisterNodes(n.nodeManager.AllNeighbourIDs())
+	n.nodeFailureChan = n.failureDetector.Subscribe()
 	wg.Add(1)
 	n.failureDetector.Run(ctx, &wg)
 	n.shareGroupMembers()
@@ -76,6 +78,8 @@ mainLoop:
 		select {
 		case <-time.After(time.Second * 1):
 			n.sendHeartbeat()
+		case failedNode := <-n.nodeFailureChan:
+			n.nodeManager.HandleFailure(failedNode)
 		case nodeExitMessage = <-n.stopChan:
 			n.logger.Println("Main loop stopped manually via stop channel")
 			cancel()
@@ -113,7 +117,6 @@ func (n *Node) SetNeighboursFromNodeMap(nodeIDs []string, nodes map[string]strin
 	for i, nodeID := range nodeIDs {
 		// find n as a child of current node -> current node is n's parent
 		if len(nodeIDs) > (2*i+1) && nodeIDs[2*i+1] == n.id {
-			//n.neighbours[nodeID] = NewNeighbour(nodes[nodeID], Parent)
 			n.nodeManager.SetNeighbour(nodeID, NewNeighbour(nodes[nodeID], Parent))
 			continue
 		}
@@ -127,12 +130,10 @@ func (n *Node) SetNeighboursFromNodeMap(nodeIDs []string, nodes map[string]strin
 			if len(nodeIDs) > (2*i + 1) {
 				childId := nodeIDs[2*i+1]
 				n.nodeManager.SetNeighbour(childId, NewNeighbour(nodes[childId], Child))
-				//n.neighbours[childId] = NewNeighbour(nodes[childId], Child)
 			}
 			if len(nodeIDs) > (2*i + 2) {
 				childId := nodeIDs[2*i+2]
 				n.nodeManager.SetNeighbour(childId, NewNeighbour(nodes[childId], Child))
-				//n.neighbours[childId] = NewNeighbour(nodes[childId], Child)
 			}
 			continue
 		}

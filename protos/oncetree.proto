@@ -61,13 +61,14 @@ service KeyValueService {
   rpc ReadAll(ReadRequest) returns (ReadAllResponse) {
     option (gorums.quorumcall) = true;
   }
+  rpc Gossip(GossipMessage) returns (google.protobuf.Empty) {}
+
   rpc Heartbeat(HeartbeatMessage) returns (google.protobuf.Empty) {
     option (gorums.multicast) = true;
   }
   rpc SetGroupMember(GroupInfo) returns (google.protobuf.Empty) {
     option (gorums.multicast) = true;
   }
-  rpc Gossip(GossipMessage) returns (google.protobuf.Empty) {}
   rpc PrintState(google.protobuf.Empty) returns (google.protobuf.Empty) {}
   rpc Prepare(PrepareMessage) returns (google.protobuf.Empty) {
     option (gorums.multicast) = true;

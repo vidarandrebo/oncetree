@@ -17,7 +17,7 @@ type NodeManager struct {
 	rwMut      sync.RWMutex
 }
 
-func NewPaxos() *NodeManager {
+func NewNodeManager() *NodeManager {
 	return &NodeManager{
 		neighbours: make(map[string]*Neighbour),
 		paxosData:  make(map[int64]*PaxosData),
@@ -39,6 +39,9 @@ func NewPaxosData() *PaxosData {
 		AcceptMessages:  make(chan *protos.AcceptMessage),
 		LearnMessages:   make(chan *protos.LearnMessage),
 	}
+}
+
+func (nm *NodeManager) HandleFailure(nodeID string) {
 }
 
 func (nm *NodeManager) GetNeighbours() map[string]*Neighbour {
@@ -125,5 +128,4 @@ func (n *Node) SetGroupMember(ctx gorums.ServerCtx, request *protos.GroupInfo) {
 	n.logger.Printf("Adding node %s to group %s", request.NeighbourID, request.NodeID)
 	groupMember := NewGroupMember(request.NeighbourAddress, NodeRole(request.NeighbourRole))
 	n.nodeManager.SetGroupMember(request.NodeID, request.NeighbourID, groupMember)
-	//n.neighbours[request.NodeID].Group[request.NeighbourID] = NewGroupMember(request.NeighbourAddress, NodeRole(request.NeighbourRole))
 }
