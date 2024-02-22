@@ -17,6 +17,7 @@ format:
 
 clean:
 	rm -rf bin/
+	find protos/ -name "*.go" -type f | xargs rm
 
 deps:
 	go install mvdan.cc/gofumpt@latest

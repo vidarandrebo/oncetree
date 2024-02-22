@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+import "gorums.proto";
+import "google/protobuf/empty.proto";
+
+package failuredetectorprotos;
+
+option go_package = "github.com/vidarandrebo/oncetree/failuredetectorprotos";
+
+message HeartbeatMessage { string NodeID = 1; }
+service FailureDetectorService {
+  rpc Heartbeat(HeartbeatMessage) returns (google.protobuf.Empty) {
+    option (gorums.multicast) = true;
+  }
+}

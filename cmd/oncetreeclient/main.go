@@ -1,7 +1,5 @@
 package main
 
-import "github.com/vidarandrebo/oncetree"
-
 var (
 	nodeIDs = []string{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"}
 	nodeMap = map[string]string{
@@ -23,6 +21,6 @@ func main() {
 	for _, nodeID := range nodeIDs {
 		nodeAddrs = append(nodeAddrs, nodeMap[nodeID])
 	}
-	client := oncetree.NewClient(nodeAddrs)
-	client.Run()
+	//client := oncetree.NewClient(nodeAddrs)
+	//client.Run()
 }

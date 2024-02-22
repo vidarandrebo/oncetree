@@ -3,55 +3,56 @@ package oncetree
 import (
 	"context"
 	"fmt"
+	"github.com/relab/gorums"
+	"github.com/vidarandrebo/oncetree/protos/failuredetectorprotos"
+	"google.golang.org/protobuf/types/known/emptypb"
 	"log"
 	"net"
 	"os"
 	"sync"
-	"time"
-
-	"github.com/relab/gorums"
-	"github.com/vidarandrebo/oncetree/protos"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 type Node struct {
-	rpcAddr         string
-	keyValueStorage *KeyValueStorage
-	gorumsServer    *gorums.Server
 	id              string
-	gorumsManager   *protos.Manager
-	gorumsConfig    *protos.Configuration
+	rpcAddr         string
+	gorumsServer    *gorums.Server
+	gorumsManagers  *GorumsManagers
+	nodeManager     *NodeManager
 	logger          *log.Logger
 	timestamp       int64
 	failureDetector *FailureDetector
-	nodeManager     *NodeManager
 	mut             sync.Mutex
 	stopChan        chan string
 	nodeFailureChan <-chan string
 }
 
 func NewNode(id string, rpcAddr string) *Node {
-	manager := protos.NewManager(
-		gorums.WithDialTimeout(1*time.Second),
-		gorums.WithGrpcDialOptions(
-			grpc.WithBlock(),
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
-		),
-	)
 	logger := log.New(os.Stderr, fmt.Sprintf("NodeID: %s ", id), log.Ltime|log.Lmsgprefix)
 	return &Node{
 		rpcAddr:         rpcAddr,
-		keyValueStorage: NewKeyValueStorage(),
 		id:              id,
-		gorumsConfig:    nil,
-		gorumsManager:   manager,
-		failureDetector: NewFailureDetector(logger),
+		failureDetector: NewFailureDetector(id, logger),
 		nodeManager:     NewNodeManager(),
+		gorumsManagers:  CreateGorumsManagers(),
 		logger:          logger,
 		timestamp:       0,
 		stopChan:        make(chan string),
 	}
+}
+
+func (n *Node) startGorumsServer(addr string) {
+	n.gorumsServer = gorums.NewServer()
+	failuredetectorprotos.RegisterFailureDetectorServiceServer(n.gorumsServer, n.failureDetector)
+	listener, listenErr := net.Listen("tcp", addr)
+	if listenErr != nil {
+		n.logger.Panicf("could not listen to address %v", addr)
+	}
+	go func() {
+		serveErr := n.gorumsServer.Serve(listener)
+		if serveErr != nil {
+			n.logger.Panicf("gorums server could not serve key value server")
+		}
+	}()
 }
 
 // Run starts the main loop of the node
@@ -60,24 +61,16 @@ func (n *Node) Run() {
 	wg := sync.WaitGroup{}
 	defer cancel()
 	n.startGorumsServer(n.rpcAddr)
-	err := n.UpdateGorumsConfig()
-	if err != nil {
-		log.Println(err)
-		return
-	}
 
 	n.failureDetector.RegisterNodes(n.nodeManager.AllNeighbourIDs())
 	n.nodeFailureChan = n.failureDetector.Subscribe()
 	wg.Add(1)
 	n.failureDetector.Run(ctx, &wg)
-	n.shareGroupMembers()
 
 	nodeExitMessage := ""
 mainLoop:
 	for {
 		select {
-		case <-time.After(time.Second * 1):
-			n.sendHeartbeat()
 		case failedNode := <-n.nodeFailureChan:
 			n.nodeManager.HandleFailure(failedNode)
 		case nodeExitMessage = <-n.stopChan:
@@ -89,26 +82,6 @@ mainLoop:
 	wg.Wait()
 	n.gorumsServer.Stop()
 	n.logger.Printf("Exiting after message \"%s\" on stop channel", nodeExitMessage)
-}
-
-// UpdateGorumsConfig will try to update the configuration with increasing timeout between attempts
-//
-// Non blocking fn
-func (n *Node) UpdateGorumsConfig() error {
-	for delay := 1; delay < 10; delay++ {
-		nodes := n.nodeManager.AllNeighbourAddrs()
-		cfg, err := n.gorumsManager.NewConfiguration(&QSpec{numNodes: len(nodes)}, gorums.WithNodeList(nodes))
-		if err == nil {
-			n.logger.Println("created new gorums configuration")
-			n.gorumsConfig = cfg
-			return nil
-		}
-		if err != nil {
-			n.logger.Printf("failed to create gorums gorumsConfig, retrying in %d seconds", delay)
-			time.Sleep(time.Second * time.Duration(delay))
-		}
-	}
-	return fmt.Errorf("failed to create configuration with the following addresses %v", n.nodeManager.AllNeighbourAddrs())
 }
 
 // SetNeighboursFromNodeMap assumes a binary tree as slice where a nodes children are at index 2i+1 and 2i+2
@@ -147,80 +120,6 @@ func (n *Node) isRoot() bool {
 	return n.nodeManager.GetParent() == nil
 }
 
-func (n *Node) startGorumsServer(addr string) {
-	n.gorumsServer = gorums.NewServer()
-	protos.RegisterKeyValueServiceServer(n.gorumsServer, n)
-	listener, listenErr := net.Listen("tcp", addr)
-	if listenErr != nil {
-		n.logger.Panicf("could not listen to address %v", addr)
-	}
-	go func() {
-		serveErr := n.gorumsServer.Serve(listener)
-		if serveErr != nil {
-			n.logger.Panicf("gorums server could not serve key value server")
-		}
-	}()
-}
-
-func (n *Node) sendGossip(originID string, key int64) {
-	n.mut.Lock()
-	n.timestamp++
-	ts := n.timestamp // make sure all messages has same ts
-	n.mut.Unlock()
-	for _, node := range n.gorumsConfig.Nodes() {
-		nodeID, err := n.nodeManager.resolveNodeIDFromAddress(node.Address())
-		if err != nil {
-			continue
-		}
-		// skip returning to originID and sending to self.
-		if nodeID == originID || nodeID == n.id {
-			continue
-		}
-		value, err := n.keyValueStorage.ReadValueExceptNode(nodeID, key)
-		// TODO handle err
-		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
-		ctx.Done()
-		_, err = node.Gossip(ctx, &protos.GossipMessage{NodeID: n.id, Key: key, Value: value, Timestamp: ts})
-		// TODO handle err
-		cancel()
-	}
-}
-
-func (n *Node) sendHeartbeat() {
-	go func() {
-		if n.gorumsConfig == nil {
-			return
-		}
-		msg := protos.HeartbeatMessage{NodeID: n.id}
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		n.gorumsConfig.Heartbeat(ctx, &msg)
-	}()
-}
-
-func (n *Node) shareGroupMembers() {
-	for id := range n.nodeManager.GetNeighbours() {
-		n.sendSetGroupMember(id)
-	}
-}
-
-func (n *Node) sendSetGroupMember(neighbourId string) {
-	//neighbour, ok := n.neighbours[neighbourId]
-	neighbour, ok := n.nodeManager.GetNeighbour(neighbourId)
-	if !ok {
-		return
-	}
-	request := &protos.GroupInfo{
-		NodeID:           n.id,
-		NeighbourID:      neighbourId,
-		NeighbourAddress: neighbour.Address,
-		NeighbourRole:    int64(neighbour.Role),
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	n.gorumsConfig.SetGroupMember(ctx, request)
-}
-
 func (n *Node) stop(msg string) {
 	n.stopChan <- msg
 }
@@ -256,4 +155,9 @@ func NewGroupMember(address string, role NodeRole) *GroupMember {
 		Address: address,
 		Role:    role,
 	}
+}
+
+func (n *Node) Crash(ctx gorums.ServerCtx, request *emptypb.Empty) (response *emptypb.Empty, err error) {
+	n.stop("crash RPC")
+	return &emptypb.Empty{}, nil
 }

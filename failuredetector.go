@@ -5,21 +5,29 @@ import (
 	"log"
 	"sync"
 	"time"
+
+	"github.com/relab/gorums"
+
+	fdprotos "github.com/vidarandrebo/oncetree/protos/failuredetectorprotos"
 )
 
 // FailureDetector is an implementation of EventuallyPerfectFailureDetector from
 // "Introduction to Reliable and Secure Distributed Programming, second edition"
 type FailureDetector struct {
-	nodes       *ConcurrentHashSet[string]
-	alive       *ConcurrentIntegerMap[string]
-	suspected   *ConcurrentHashSet[string]
-	delay       int
-	logger      *log.Logger
-	subscribers []chan<- string
+	id            string
+	nodes         *ConcurrentHashSet[string]
+	alive         *ConcurrentIntegerMap[string]
+	suspected     *ConcurrentHashSet[string]
+	delay         int
+	logger        *log.Logger
+	subscribers   []chan<- string
+	configuration *fdprotos.Configuration
+	manager       *fdprotos.Manager
 }
 
-func NewFailureDetector(logger *log.Logger) *FailureDetector {
+func NewFailureDetector(id string, logger *log.Logger) *FailureDetector {
 	return &FailureDetector{
+		id:        id,
 		nodes:     NewConcurrentHashSet[string](),
 		alive:     NewConcurrentIntegerMap[string](),
 		suspected: NewConcurrentHashSet[string](),
@@ -69,7 +77,8 @@ func (fd *FailureDetector) Run(ctx context.Context, wg *sync.WaitGroup) {
 				fd.timeout()
 			case <-ctx.Done():
 				break mainLoop
-
+			case <-time.After(time.Second * 1):
+				fd.sendHeartbeat()
 			}
 		}
 		fd.logger.Println("Exiting failure detector")
@@ -87,4 +96,20 @@ func (fd *FailureDetector) timeout() {
 	}
 
 	fd.alive.Clear()
+}
+
+func (fd *FailureDetector) Heartbeat(ctx gorums.ServerCtx, request *fdprotos.HeartbeatMessage) {
+	fd.RegisterHeartbeat(request.GetNodeID())
+}
+
+func (fd *FailureDetector) sendHeartbeat() {
+	go func() {
+		if fd.configuration == nil {
+			return
+		}
+		msg := fdprotos.HeartbeatMessage{NodeID: n.id}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		fd.configuration.Heartbeat(ctx, &msg)
+	}()
 }
