@@ -21,6 +21,6 @@ func main() {
 	for _, nodeID := range nodeIDs {
 		nodeAddrs = append(nodeAddrs, nodeMap[nodeID])
 	}
-	//client := oncetree.NewClient(nodeAddrs)
-	//client.Run()
+	// client := oncetree.NewClient(nodeAddrs)
+	// client.Run()
 }

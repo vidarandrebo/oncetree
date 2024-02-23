@@ -7,12 +7,13 @@
 package failuredetectorprotos
 
 import (
+	reflect "reflect"
+	sync "sync"
+
 	_ "github.com/relab/gorums"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
-	reflect "reflect"
-	sync "sync"
 )
 
 const (
@@ -108,11 +109,13 @@ func file_protos_failuredetectorprotos_failuredetector_proto_rawDescGZIP() []byt
 	return file_protos_failuredetectorprotos_failuredetector_proto_rawDescData
 }
 
-var file_protos_failuredetectorprotos_failuredetector_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
-var file_protos_failuredetectorprotos_failuredetector_proto_goTypes = []interface{}{
-	(*HeartbeatMessage)(nil), // 0: failuredetectorprotos.HeartbeatMessage
-	(*emptypb.Empty)(nil),    // 1: google.protobuf.Empty
-}
+var (
+	file_protos_failuredetectorprotos_failuredetector_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
+	file_protos_failuredetectorprotos_failuredetector_proto_goTypes  = []interface{}{
+		(*HeartbeatMessage)(nil), // 0: failuredetectorprotos.HeartbeatMessage
+		(*emptypb.Empty)(nil),    // 1: google.protobuf.Empty
+	}
+)
 var file_protos_failuredetectorprotos_failuredetector_proto_depIdxs = []int32{
 	0, // 0: failuredetectorprotos.FailureDetectorService.Heartbeat:input_type -> failuredetectorprotos.HeartbeatMessage
 	1, // 1: failuredetectorprotos.FailureDetectorService.Heartbeat:output_type -> google.protobuf.Empty

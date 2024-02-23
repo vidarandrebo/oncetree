@@ -1,32 +1,32 @@
 package oncetree
 
 import (
+	"context"
 	"fmt"
 	"log"
-	"context"
 	"sync"
 	"time"
 
 	"github.com/relab/gorums"
-	"google.golang.org/protobuf/types/known/emptypb"
 	kvsprotos "github.com/vidarandrebo/oncetree/protos/keyvaluestorageprotos"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 type KeyValueStorageService struct {
-	id string
-	storage KeyValueStorage
-	logger *log.Logger
-	mut sync.Mutex
-	timestamp int64
-	gorumsConfig *kvsprotos.Configuration
+	id            string
+	storage       KeyValueStorage
+	logger        *log.Logger
+	mut           sync.Mutex
+	timestamp     int64
+	gorumsConfig  *kvsprotos.Configuration
 	gorumsManager *kvsprotos.Manager
-	nodeManager *NodeManager
+	nodeManager   *NodeManager
 }
 
 func NewKeyValueStorageService(id string, logger *log.Logger) *KeyValueStorageService {
 	return &KeyValueStorageService{
-		id: id,
-		logger: logger,
+		id:      id,
+		logger:  logger,
 		storage: *NewKeyValueStorage(),
 	}
 }
@@ -54,6 +54,7 @@ func (kvss *KeyValueStorageService) sendGossip(originID string, key int64) {
 		cancel()
 	}
 }
+
 func (kvss *KeyValueStorageService) Write(ctx gorums.ServerCtx, request *kvsprotos.WriteRequest) (response *emptypb.Empty, err error) {
 	kvss.mut.Lock()
 	kvss.timestamp++

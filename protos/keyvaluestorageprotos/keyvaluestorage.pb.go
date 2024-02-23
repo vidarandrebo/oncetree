@@ -7,12 +7,13 @@
 package keyvaluestorageprotos
 
 import (
+	reflect "reflect"
+	sync "sync"
+
 	_ "github.com/relab/gorums"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
-	reflect "reflect"
-	sync "sync"
 )
 
 const (
@@ -369,16 +370,18 @@ func file_protos_keyvaluestorageprotos_keyvaluestorage_proto_rawDescGZIP() []byt
 	return file_protos_keyvaluestorageprotos_keyvaluestorage_proto_rawDescData
 }
 
-var file_protos_keyvaluestorageprotos_keyvaluestorage_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
-var file_protos_keyvaluestorageprotos_keyvaluestorage_proto_goTypes = []interface{}{
-	(*ReadRequest)(nil),     // 0: keyvaluestorageprotos.ReadRequest
-	(*ReadResponse)(nil),    // 1: keyvaluestorageprotos.ReadResponse
-	(*ReadAllResponse)(nil), // 2: keyvaluestorageprotos.ReadAllResponse
-	(*WriteRequest)(nil),    // 3: keyvaluestorageprotos.WriteRequest
-	(*GossipMessage)(nil),   // 4: keyvaluestorageprotos.GossipMessage
-	nil,                     // 5: keyvaluestorageprotos.ReadAllResponse.ValueEntry
-	(*emptypb.Empty)(nil),   // 6: google.protobuf.Empty
-}
+var (
+	file_protos_keyvaluestorageprotos_keyvaluestorage_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+	file_protos_keyvaluestorageprotos_keyvaluestorage_proto_goTypes  = []interface{}{
+		(*ReadRequest)(nil),     // 0: keyvaluestorageprotos.ReadRequest
+		(*ReadResponse)(nil),    // 1: keyvaluestorageprotos.ReadResponse
+		(*ReadAllResponse)(nil), // 2: keyvaluestorageprotos.ReadAllResponse
+		(*WriteRequest)(nil),    // 3: keyvaluestorageprotos.WriteRequest
+		(*GossipMessage)(nil),   // 4: keyvaluestorageprotos.GossipMessage
+		nil,                     // 5: keyvaluestorageprotos.ReadAllResponse.ValueEntry
+		(*emptypb.Empty)(nil),   // 6: google.protobuf.Empty
+	}
+)
 var file_protos_keyvaluestorageprotos_keyvaluestorage_proto_depIdxs = []int32{
 	5, // 0: keyvaluestorageprotos.ReadAllResponse.Value:type_name -> keyvaluestorageprotos.ReadAllResponse.ValueEntry
 	3, // 1: keyvaluestorageprotos.KeyValueStorage.Write:input_type -> keyvaluestorageprotos.WriteRequest
