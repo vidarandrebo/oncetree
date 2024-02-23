@@ -3,13 +3,14 @@ package oncetree
 import (
 	"context"
 	"fmt"
-	"github.com/relab/gorums"
-	"github.com/vidarandrebo/oncetree/protos/failuredetectorprotos"
-	"google.golang.org/protobuf/types/known/emptypb"
 	"log"
 	"net"
 	"os"
 	"sync"
+
+	"github.com/relab/gorums"
+	"github.com/vidarandrebo/oncetree/protos/failuredetectorprotos"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 type Node struct {

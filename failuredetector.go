@@ -107,7 +107,7 @@ func (fd *FailureDetector) sendHeartbeat() {
 		if fd.configuration == nil {
 			return
 		}
-		msg := fdprotos.HeartbeatMessage{NodeID: n.id}
+		msg := fdprotos.HeartbeatMessage{NodeID: fd.id}
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		fd.configuration.Heartbeat(ctx, &msg)
