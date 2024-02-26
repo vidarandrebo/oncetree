@@ -382,6 +382,7 @@ var (
 		(*emptypb.Empty)(nil),   // 6: google.protobuf.Empty
 	}
 )
+
 var file_protos_keyvaluestorageprotos_keyvaluestorage_proto_depIdxs = []int32{
 	5, // 0: keyvaluestorageprotos.ReadAllResponse.Value:type_name -> keyvaluestorageprotos.ReadAllResponse.ValueEntry
 	3, // 1: keyvaluestorageprotos.KeyValueStorage.Write:input_type -> keyvaluestorageprotos.WriteRequest

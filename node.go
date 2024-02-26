@@ -7,43 +7,80 @@ import (
 	"net"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/relab/gorums"
 	"github.com/vidarandrebo/oncetree/protos/failuredetectorprotos"
+	"github.com/vidarandrebo/oncetree/protos/keyvaluestorageprotos"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 type Node struct {
-	id              string
-	rpcAddr         string
-	gorumsServer    *gorums.Server
-	gorumsManagers  *GorumsManagers
-	nodeManager     *NodeManager
-	logger          *log.Logger
-	timestamp       int64
-	failureDetector *FailureDetector
-	mut             sync.Mutex
-	stopChan        chan string
-	nodeFailureChan <-chan string
+	id                     string
+	rpcAddr                string
+	gorumsServer           *gorums.Server
+	gorumsManagers         *GorumsManagers
+	nodeManager            *NodeManager
+	logger                 *log.Logger
+	timestamp              int64
+	failureDetector        *FailureDetector
+	keyValueStorageService *KeyValueStorageService
+	stopChan               chan string
+	nodeFailureChan        <-chan string
 }
 
 func NewNode(id string, rpcAddr string) *Node {
+	nodeManager := NewNodeManager()
+	gorumsManagers := CreateGorumsManagers()
 	logger := log.New(os.Stderr, fmt.Sprintf("NodeID: %s ", id), log.Ltime|log.Lmsgprefix)
 	return &Node{
-		rpcAddr:         rpcAddr,
-		id:              id,
-		failureDetector: NewFailureDetector(id, logger),
-		nodeManager:     NewNodeManager(),
-		gorumsManagers:  CreateGorumsManagers(),
-		logger:          logger,
-		timestamp:       0,
-		stopChan:        make(chan string),
+		rpcAddr: rpcAddr,
+		id:      id,
+		failureDetector: NewFailureDetector(
+			id,
+			logger,
+			nodeManager,
+			gorumsManagers.fdManager,
+		),
+		keyValueStorageService: NewKeyValueStorageService(
+			id,
+			logger,
+			nodeManager,
+			gorumsManagers.kvsManager,
+		),
+		nodeManager:    nodeManager,
+		gorumsManagers: gorumsManagers,
+		logger:         logger,
+		timestamp:      0,
+		stopChan:       make(chan string),
+	}
+}
+
+// setupGorumsConfigs sets up the initial gorums configurations for the various services
+func (n *Node) setupGorumsConfigs() {
+	tries := 0
+startTryCreateConfigs:
+	time.Sleep(time.Duration(tries))
+	tries++
+	if tries > 5 {
+		log.Panicln("could not create gorums configs")
+	}
+	fdSetupErr := n.failureDetector.SetNodesFromManager()
+	kvssSetupErr := n.keyValueStorageService.SetNodesFromManager()
+	if fdSetupErr != nil {
+		n.logger.Println(fdSetupErr)
+		goto startTryCreateConfigs
+	}
+	if kvssSetupErr != nil {
+		n.logger.Println(kvssSetupErr)
+		goto startTryCreateConfigs
 	}
 }
 
 func (n *Node) startGorumsServer(addr string) {
 	n.gorumsServer = gorums.NewServer()
 	failuredetectorprotos.RegisterFailureDetectorServiceServer(n.gorumsServer, n.failureDetector)
+	keyvaluestorageprotos.RegisterKeyValueStorageServer(n.gorumsServer, n.keyValueStorageService)
 	listener, listenErr := net.Listen("tcp", addr)
 	if listenErr != nil {
 		n.logger.Panicf("could not listen to address %v", addr)
@@ -62,13 +99,13 @@ func (n *Node) Run() {
 	wg := sync.WaitGroup{}
 	defer cancel()
 	n.startGorumsServer(n.rpcAddr)
-
-	n.failureDetector.RegisterNodes(n.nodeManager.AllNeighbourIDs())
+	n.setupGorumsConfigs()
 	n.nodeFailureChan = n.failureDetector.Subscribe()
 	wg.Add(1)
-	n.failureDetector.Run(ctx, &wg)
+	go n.failureDetector.Run(ctx, &wg)
 
 	nodeExitMessage := ""
+	n.logger.Println("hello there")
 mainLoop:
 	for {
 		select {
@@ -91,11 +128,11 @@ func (n *Node) SetNeighboursFromNodeMap(nodeIDs []string, nodes map[string]strin
 	for i, nodeID := range nodeIDs {
 		// find n as a child of current node -> current node is n's parent
 		if len(nodeIDs) > (2*i+1) && nodeIDs[2*i+1] == n.id {
-			n.nodeManager.SetNeighbour(nodeID, NewNeighbour(nodes[nodeID], Parent))
+			n.nodeManager.AddNeighbour(nodeID, nodes[nodeID], Parent)
 			continue
 		}
 		if len(nodeIDs) > (2*i+2) && nodeIDs[2*i+2] == n.id {
-			n.nodeManager.SetNeighbour(nodeID, NewNeighbour(nodes[nodeID], Parent))
+			n.nodeManager.AddNeighbour(nodeID, nodes[nodeID], Parent)
 			continue
 		}
 
@@ -103,11 +140,11 @@ func (n *Node) SetNeighboursFromNodeMap(nodeIDs []string, nodes map[string]strin
 		if nodeID == n.id {
 			if len(nodeIDs) > (2*i + 1) {
 				childId := nodeIDs[2*i+1]
-				n.nodeManager.SetNeighbour(childId, NewNeighbour(nodes[childId], Child))
+				n.nodeManager.AddNeighbour(childId, nodes[childId], Child)
 			}
 			if len(nodeIDs) > (2*i + 2) {
 				childId := nodeIDs[2*i+2]
-				n.nodeManager.SetNeighbour(childId, NewNeighbour(nodes[childId], Child))
+				n.nodeManager.AddNeighbour(childId, nodes[childId], Child)
 			}
 			continue
 		}
@@ -121,7 +158,7 @@ func (n *Node) isRoot() bool {
 	return n.nodeManager.GetParent() == nil
 }
 
-func (n *Node) stop(msg string) {
+func (n *Node) Stop(msg string) {
 	n.stopChan <- msg
 }
 
@@ -133,22 +170,32 @@ const (
 )
 
 type Neighbour struct {
-	Address string
-	Group   map[string]*GroupMember
-	Role    NodeRole
+	GorumsID uint32
+	Address  string
+	Group    map[string]*GroupMember
+	Role     NodeRole
 }
 
-func NewNeighbour(address string, role NodeRole) *Neighbour {
+func NewNeighbour(gorumsID uint32, address string, role NodeRole) *Neighbour {
 	return &Neighbour{
-		Address: address,
-		Group:   make(map[string]*GroupMember),
-		Role:    role,
+		GorumsID: gorumsID,
+		Address:  address,
+		Group:    make(map[string]*GroupMember),
+		Role:     role,
 	}
+}
+
+func (n *Neighbour) String() string {
+	return fmt.Sprintf("Neighbour: { GorumsID: %d, Address: %s, Role: %d }", n.GorumsID, n.Address, n.Role)
 }
 
 type GroupMember struct {
 	Address string
 	Role    NodeRole
+}
+
+func (gm *GroupMember) String() string {
+	return fmt.Sprintf("GroupMember: { Address: %s, Role: %d }", gm.Address, gm.Role)
 }
 
 func NewGroupMember(address string, role NodeRole) *GroupMember {
@@ -159,6 +206,6 @@ func NewGroupMember(address string, role NodeRole) *GroupMember {
 }
 
 func (n *Node) Crash(ctx gorums.ServerCtx, request *emptypb.Empty) (response *emptypb.Empty, err error) {
-	n.stop("crash RPC")
+	n.Stop("crash RPC")
 	return &emptypb.Empty{}, nil
 }

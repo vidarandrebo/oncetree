@@ -116,6 +116,7 @@ var (
 		(*emptypb.Empty)(nil),    // 1: google.protobuf.Empty
 	}
 )
+
 var file_protos_failuredetectorprotos_failuredetector_proto_depIdxs = []int32{
 	0, // 0: failuredetectorprotos.FailureDetectorService.Heartbeat:input_type -> failuredetectorprotos.HeartbeatMessage
 	1, // 1: failuredetectorprotos.FailureDetectorService.Heartbeat:output_type -> google.protobuf.Empty

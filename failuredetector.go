@@ -11,8 +11,6 @@ import (
 	fdprotos "github.com/vidarandrebo/oncetree/protos/failuredetectorprotos"
 )
 
-// FailureDetector is an implementation of EventuallyPerfectFailureDetector from
-// "Introduction to Reliable and Secure Distributed Programming, second edition"
 type FailureDetector struct {
 	id            string
 	nodes         *ConcurrentHashSet[string]
@@ -21,33 +19,42 @@ type FailureDetector struct {
 	delay         int
 	logger        *log.Logger
 	subscribers   []chan<- string
-	configuration *fdprotos.Configuration
-	manager       *fdprotos.Manager
+	nodeManager   *NodeManager
+	gorumsConfig  *fdprotos.Configuration
+	gorumsManager *fdprotos.Manager
 }
 
-func NewFailureDetector(id string, logger *log.Logger) *FailureDetector {
+func NewFailureDetector(id string, logger *log.Logger, nodeManager *NodeManager, gorumsManager *fdprotos.Manager) *FailureDetector {
 	return &FailureDetector{
-		id:        id,
-		nodes:     NewConcurrentHashSet[string](),
-		alive:     NewConcurrentIntegerMap[string](),
-		suspected: NewConcurrentHashSet[string](),
-		delay:     5,
-		logger:    logger,
+		id:            id,
+		nodes:         NewConcurrentHashSet[string](),
+		alive:         NewConcurrentIntegerMap[string](),
+		suspected:     NewConcurrentHashSet[string](),
+		nodeManager:   nodeManager,
+		gorumsManager: gorumsManager,
+		delay:         5,
+		logger:        logger,
+		subscribers:   make([]chan<- string, 0),
 	}
 }
 
-func (fd *FailureDetector) RegisterHeartbeat(nodeID string) {
-	fd.alive.Increment(nodeID, 1)
-}
-
-func (fd *FailureDetector) RegisterNode(nodeID string) {
-	fd.nodes.Add(nodeID)
-}
-
-func (fd *FailureDetector) RegisterNodes(nodeIDs []string) {
-	for _, nodeID := range nodeIDs {
-		fd.nodes.Add(nodeID)
+func (fd *FailureDetector) SetNodesFromManager() error {
+	for _, neighbour := range fd.nodeManager.GetNeighbours() {
+		fd.nodes.Add(neighbour.Key)
 	}
+	cfg, err := fd.gorumsManager.NewConfiguration(
+		&FDQSpec{
+			NumNodes: fd.nodes.Len(),
+		},
+		gorums.WithNodeMap(
+			fd.nodeManager.GetGorumsNeighbourMap(),
+		),
+	)
+	if err != nil {
+		return err
+	}
+	fd.gorumsConfig = cfg
+	return nil
 }
 
 func (fd *FailureDetector) DeregisterNode(nodeID string) {
@@ -69,21 +76,19 @@ func (fd *FailureDetector) Suspect(nodeID string) {
 }
 
 func (fd *FailureDetector) Run(ctx context.Context, wg *sync.WaitGroup) {
-	go func() {
-	mainLoop:
-		for {
-			select {
-			case <-time.After(time.Duration(fd.delay) * time.Second):
-				fd.timeout()
-			case <-ctx.Done():
-				break mainLoop
-			case <-time.After(time.Second * 1):
-				fd.sendHeartbeat()
-			}
+mainLoop:
+	for {
+		select {
+		case <-time.After(time.Duration(fd.delay) * time.Second):
+			fd.timeout()
+		case <-ctx.Done():
+			break mainLoop
+		case <-time.After(time.Second * 1):
+			fd.sendHeartbeat()
 		}
-		fd.logger.Println("Exiting failure detector")
-		wg.Done()
-	}()
+	}
+	fd.logger.Println("Exiting failure detector")
+	wg.Done()
 }
 
 func (fd *FailureDetector) timeout() {
@@ -99,17 +104,17 @@ func (fd *FailureDetector) timeout() {
 }
 
 func (fd *FailureDetector) Heartbeat(ctx gorums.ServerCtx, request *fdprotos.HeartbeatMessage) {
-	fd.RegisterHeartbeat(request.GetNodeID())
+	fd.alive.Increment(request.GetNodeID(), 1)
 }
 
 func (fd *FailureDetector) sendHeartbeat() {
 	go func() {
-		if fd.configuration == nil {
+		if fd.gorumsConfig == nil {
 			return
 		}
 		msg := fdprotos.HeartbeatMessage{NodeID: fd.id}
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		fd.configuration.Heartbeat(ctx, &msg)
+		fd.gorumsConfig.Heartbeat(ctx, &msg)
 	}()
 }

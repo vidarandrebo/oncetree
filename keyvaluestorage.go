@@ -17,25 +17,45 @@ type KeyValueStorageService struct {
 	storage       KeyValueStorage
 	logger        *log.Logger
 	mut           sync.Mutex
-	timestamp     int64
+	timestamp     *RWMutex[int64]
 	gorumsConfig  *kvsprotos.Configuration
 	gorumsManager *kvsprotos.Manager
 	nodeManager   *NodeManager
 }
 
-func NewKeyValueStorageService(id string, logger *log.Logger) *KeyValueStorageService {
+func NewKeyValueStorageService(id string, logger *log.Logger, nodeManager *NodeManager, gorumsManager *kvsprotos.Manager) *KeyValueStorageService {
 	return &KeyValueStorageService{
-		id:      id,
-		logger:  logger,
-		storage: *NewKeyValueStorage(),
+		id:            id,
+		logger:        logger,
+		storage:       *NewKeyValueStorage(),
+		gorumsManager: gorumsManager,
+		nodeManager:   nodeManager,
+		timestamp:     NewRWMutex[int64](0),
 	}
 }
 
+func (kvss *KeyValueStorageService) SetNodesFromManager() error {
+	gorumsNeighbourMap := kvss.nodeManager.GetGorumsNeighbourMap()
+	cfg, err := kvss.gorumsManager.NewConfiguration(
+		&QSpec{
+			NumNodes: len(gorumsNeighbourMap),
+		},
+		gorums.WithNodeMap(
+			gorumsNeighbourMap,
+		),
+	)
+	if err != nil {
+		return err
+	}
+	kvss.gorumsConfig = cfg
+	return nil
+}
+
 func (kvss *KeyValueStorageService) sendGossip(originID string, key int64) {
-	kvss.mut.Lock()
-	kvss.timestamp++
-	ts := kvss.timestamp // make sure all messages has same ts
-	kvss.mut.Unlock()
+	tsRef := kvss.timestamp.Lock()
+	*tsRef++     // increment before sending
+	ts := *tsRef // make sure all messages has same ts
+	kvss.timestamp.Unlock(&tsRef)
 	for _, node := range kvss.gorumsConfig.Nodes() {
 		nodeID, err := kvss.nodeManager.resolveNodeIDFromAddress(node.Address())
 		if err != nil {
@@ -46,20 +66,23 @@ func (kvss *KeyValueStorageService) sendGossip(originID string, key int64) {
 			continue
 		}
 		value, err := kvss.storage.ReadValueExceptNode(nodeID, key)
-		// TODO handle err
+		if err != nil {
+			return
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 		ctx.Done()
 		_, err = node.Gossip(ctx, &kvsprotos.GossipMessage{NodeID: kvss.id, Key: key, Value: value, Timestamp: ts})
-		// TODO handle err
+		kvss.logger.Println(err)
 		cancel()
 	}
 }
 
 func (kvss *KeyValueStorageService) Write(ctx gorums.ServerCtx, request *kvsprotos.WriteRequest) (response *emptypb.Empty, err error) {
-	kvss.mut.Lock()
-	kvss.timestamp++
-	kvss.storage.WriteValue(kvss.id, request.GetKey(), request.GetValue(), kvss.timestamp)
-	kvss.mut.Unlock()
+	kvss.logger.Println("got writerequest")
+	ts := kvss.timestamp.Lock()
+	*ts++
+	kvss.storage.WriteValue(kvss.id, request.GetKey(), request.GetValue(), *ts)
+	kvss.timestamp.Unlock(&ts)
 	go func() {
 		kvss.sendGossip(kvss.id, request.GetKey())
 	}()
