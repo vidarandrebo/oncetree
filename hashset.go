@@ -17,7 +17,7 @@ func (s HashSet[T]) Contains(key T) bool {
 	return ok
 }
 
-func (s HashSet[T]) Remove(key T) {
+func (s HashSet[T]) Delete(key T) {
 	delete(s, key)
 }
 
@@ -90,10 +90,10 @@ func (s *ConcurrentHashSet[T]) Contains(key T) bool {
 	return s.hashSet.Contains(key)
 }
 
-func (s *ConcurrentHashSet[T]) Remove(key T) {
+func (s *ConcurrentHashSet[T]) Delete(key T) {
 	s.mut.Lock()
 	defer s.mut.Unlock()
-	s.hashSet.Remove(key)
+	s.hashSet.Delete(key)
 }
 
 func (s *ConcurrentHashSet[T]) Intersection(b *ConcurrentHashSet[T]) *ConcurrentHashSet[T] {

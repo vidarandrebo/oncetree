@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+import "gorums.proto";
+import "google/protobuf/empty.proto";
+
+package keyvaluestorageprotos;
+
+option go_package = "github.com/vidarandrebo/oncetree/keyvaluestorageprotos";
+
+message ReadRequest { int64 Key = 1; }
+message ReadResponse { int64 Value = 1; }
+// ReadAllResponse contains a map Address -> Value
+message ReadAllResponse { map<string, int64> Value = 1; }
+
+message WriteRequest {
+  int64 Key = 1;
+  int64 Value = 2;
+}
+
+message GossipMessage {
+  string NodeID = 1;
+  int64 Key = 2;
+  int64 Value = 3;
+  int64 Timestamp = 4;
+}
+
+service KeyValueStorage {
+  rpc Write(WriteRequest) returns (google.protobuf.Empty) {}
+  rpc Read(ReadRequest) returns (ReadResponse) {}
+  rpc ReadAll(ReadRequest) returns (ReadAllResponse) {
+    option (gorums.quorumcall) = true;
+  }
+  rpc Gossip(GossipMessage) returns (google.protobuf.Empty) {}
+
+  rpc PrintState(google.protobuf.Empty) returns (google.protobuf.Empty) {}
+}
