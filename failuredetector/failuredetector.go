@@ -1,10 +1,14 @@
-package oncetree
+package failuredetector
 
 import (
 	"context"
 	"log"
 	"sync"
 	"time"
+
+	"github.com/vidarandrebo/oncetree/concurrent/hashset"
+	"github.com/vidarandrebo/oncetree/concurrent/maps"
+	"github.com/vidarandrebo/oncetree/nodemanager"
 
 	"github.com/relab/gorums"
 
@@ -13,23 +17,23 @@ import (
 
 type FailureDetector struct {
 	id            string
-	nodes         *ConcurrentHashSet[string]
-	alive         *ConcurrentIntegerMap[string]
-	suspected     *ConcurrentHashSet[string]
+	nodes         *hashset.ConcurrentHashSet[string]
+	alive         *maps.ConcurrentIntegerMap[string]
+	suspected     *hashset.ConcurrentHashSet[string]
 	delay         int
 	logger        *log.Logger
 	subscribers   []chan<- string
-	nodeManager   *NodeManager
+	nodeManager   *nodemanager.NodeManager
 	gorumsConfig  *fdprotos.Configuration
 	gorumsManager *fdprotos.Manager
 }
 
-func NewFailureDetector(id string, logger *log.Logger, nodeManager *NodeManager, gorumsManager *fdprotos.Manager) *FailureDetector {
+func New(id string, logger *log.Logger, nodeManager *nodemanager.NodeManager, gorumsManager *fdprotos.Manager) *FailureDetector {
 	return &FailureDetector{
 		id:            id,
-		nodes:         NewConcurrentHashSet[string](),
-		alive:         NewConcurrentIntegerMap[string](),
-		suspected:     NewConcurrentHashSet[string](),
+		nodes:         hashset.New[string](),
+		alive:         maps.NewConcurrentIntegerMap[string](),
+		suspected:     hashset.New[string](),
 		nodeManager:   nodeManager,
 		gorumsManager: gorumsManager,
 		delay:         5,
@@ -43,8 +47,8 @@ func (fd *FailureDetector) SetNodesFromManager() error {
 		fd.nodes.Add(neighbour.Key)
 	}
 	cfg, err := fd.gorumsManager.NewConfiguration(
-		&FDQSpec{
-			NumNodes: fd.nodes.Len(),
+		&qSpec{
+			numNodes: fd.nodes.Len(),
 		},
 		gorums.WithNodeMap(
 			fd.nodeManager.GetGorumsNeighbourMap(),
@@ -117,4 +121,8 @@ func (fd *FailureDetector) sendHeartbeat() {
 		defer cancel()
 		fd.gorumsConfig.Heartbeat(ctx, &msg)
 	}()
+}
+
+type qSpec struct {
+	numNodes int
 }

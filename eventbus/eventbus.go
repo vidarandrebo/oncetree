@@ -22,6 +22,7 @@ func New(logger *log.Logger) *EventBus {
 		logger:        logger,
 	}
 }
+
 func (eb *EventBus) Run(cxt context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
 loop:
@@ -34,6 +35,7 @@ loop:
 		}
 	}
 }
+
 func (eb *EventBus) Handle(event any) {
 	eventType := reflect.TypeOf(event)
 	handlers, err := eb.EventHandlers(eventType)
@@ -49,14 +51,16 @@ func (eb *EventBus) Handle(event any) {
 func (eb *EventBus) Push(event any) {
 	eb.pendingEvents <- event
 }
+
 func (eb *EventBus) EventHandlers(eventType reflect.Type) ([]func(), error) {
 	eb.mut.RLock()
 	handlers, ok := eb.handlers[eventType]
 	if !ok {
-		return nil, fmt.Errorf("no handlers for testEvent of type %v", eventType)
+		return nil, fmt.Errorf("no handlers for event of type %v", eventType)
 	}
 	return handlers, nil
 }
+
 func (eb *EventBus) RegisterHandler(eventType reflect.Type, fn func()) {
 	eb.mut.Lock()
 	defer eb.mut.Unlock()

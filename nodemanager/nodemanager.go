@@ -1,12 +1,14 @@
-package oncetree
+package nodemanager
 
 import (
 	"cmp"
 	"fmt"
-	"github.com/vidarandrebo/oncetree/concurrent/mutex"
 	"log"
 	"slices"
 	"sync"
+
+	"github.com/vidarandrebo/oncetree/concurrent/maps"
+	"github.com/vidarandrebo/oncetree/concurrent/mutex"
 
 	"github.com/relab/gorums"
 	nmprotos "github.com/vidarandrebo/oncetree/protos/nodemanager"
@@ -15,7 +17,7 @@ import (
 type NodeManager struct {
 	id           string
 	fanout       int
-	neighbours   *ConcurrentMap[string, *Neighbour]
+	neighbours   *maps.ConcurrentMap[string, *Neighbour]
 	epoch        int64
 	nextGorumsID *mutex.RWMutex[uint32]
 	lastJoinID   *mutex.RWMutex[string]
@@ -23,11 +25,11 @@ type NodeManager struct {
 	logger       *log.Logger
 }
 
-func NewNodeManager(id string, fanout int) *NodeManager {
+func New(id string, fanout int) *NodeManager {
 	return &NodeManager{
 		id:           id,
 		fanout:       fanout,
-		neighbours:   NewConcurrentMap[string, *Neighbour](),
+		neighbours:   maps.NewConcurrentMap[string, *Neighbour](),
 		nextGorumsID: mutex.New[uint32](0),
 		lastJoinID:   mutex.New[string](""),
 	}
@@ -36,7 +38,7 @@ func NewNodeManager(id string, fanout int) *NodeManager {
 func (nm *NodeManager) HandleFailure(nodeID string) {
 }
 
-func (nm *NodeManager) GetNeighbours() []KeyValuePair[string, *Neighbour] {
+func (nm *NodeManager) GetNeighbours() []maps.KeyValuePair[string, *Neighbour] {
 	return nm.neighbours.Entries()
 }
 
@@ -78,7 +80,7 @@ func (nm *NodeManager) AllNeighbourAddrs() []string {
 	return addresses
 }
 
-func (nm *NodeManager) resolveNodeIDFromAddress(address string) (string, error) {
+func (nm *NodeManager) ResolveNodeIDFromAddress(address string) (string, error) {
 	for _, neighbour := range nm.neighbours.Entries() {
 		if neighbour.Value.Address == address {
 			return neighbour.Key, nil
@@ -172,4 +174,49 @@ func (nm *NodeManager) Accept(ctx gorums.ServerCtx, request *nmprotos.AcceptMess
 func (nm *NodeManager) Commit(ctx gorums.ServerCtx, request *nmprotos.CommitMessage) {
 	// TODO implement me
 	panic("implement me")
+}
+
+type NodeRole int
+
+const (
+	Parent NodeRole = iota
+	Child
+)
+
+type Neighbour struct {
+	ID       string
+	GorumsID uint32
+	Address  string
+	Group    map[string]*GroupMember
+	Role     NodeRole
+}
+
+func NewNeighbour(ID string, gorumsID uint32, address string, role NodeRole) *Neighbour {
+	return &Neighbour{
+		ID:       ID,
+		GorumsID: gorumsID,
+		Address:  address,
+		Group:    make(map[string]*GroupMember),
+		Role:     role,
+	}
+}
+
+func (n *Neighbour) String() string {
+	return fmt.Sprintf("Neighbour: { GorumsID: %d, Address: %s, Role: %d }", n.GorumsID, n.Address, n.Role)
+}
+
+type GroupMember struct {
+	Address string
+	Role    NodeRole
+}
+
+func (gm *GroupMember) String() string {
+	return fmt.Sprintf("GroupMember: { Address: %s, Role: %d }", gm.Address, gm.Role)
+}
+
+func NewGroupMember(address string, role NodeRole) *GroupMember {
+	return &GroupMember{
+		Address: address,
+		Role:    role,
+	}
 }

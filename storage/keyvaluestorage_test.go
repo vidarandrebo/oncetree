@@ -1,42 +1,72 @@
-package oncetree_test
+package storage_test
 
 import (
 	"context"
 	"testing"
 	"time"
 
+	"github.com/vidarandrebo/oncetree"
+	"github.com/vidarandrebo/oncetree/storage"
+
 	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/relab/gorums"
 	"github.com/stretchr/testify/assert"
-	"github.com/vidarandrebo/oncetree"
 	kvsprotos "github.com/vidarandrebo/oncetree/protos/keyvaluestorage"
 	"google.golang.org/grpc"
 )
 
-var keyValueStorage = oncetree.KeyValueStorage{
+var (
+	nodeIDs   = []string{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"}
+	nodeAddrs = []string{
+		":9080",
+		":9081",
+		":9082",
+		":9083",
+		":9084",
+		":9085",
+		":9086",
+		":9087",
+		":9088",
+		":9089",
+	}
+	nodeMap = map[string]string{
+		"0": ":9080",
+		"1": ":9081",
+		"2": ":9082",
+		"3": ":9083",
+		"4": ":9084",
+		"5": ":9085",
+		"6": ":9086",
+		"7": ":9087",
+		"8": ":9088",
+		"9": ":9089",
+	}
+)
+
+var keyValueStorage = storage.KeyValueStorage{
 	"addr1": {
-		1: oncetree.TimestampedValue{Value: 12, Timestamp: 3},
-		2: oncetree.TimestampedValue{Value: 13, Timestamp: 3},
-		3: oncetree.TimestampedValue{Value: 14, Timestamp: 3},
-		5: oncetree.TimestampedValue{Value: 40, Timestamp: 3},
+		1: storage.TimestampedValue{Value: 12, Timestamp: 3},
+		2: storage.TimestampedValue{Value: 13, Timestamp: 3},
+		3: storage.TimestampedValue{Value: 14, Timestamp: 3},
+		5: storage.TimestampedValue{Value: 40, Timestamp: 3},
 	},
 	"addr2": {
-		1: oncetree.TimestampedValue{Value: 15, Timestamp: 3},
-		2: oncetree.TimestampedValue{Value: 16, Timestamp: 3},
-		3: oncetree.TimestampedValue{Value: 0, Timestamp: 3},
-		4: oncetree.TimestampedValue{Value: 77, Timestamp: 3},
+		1: storage.TimestampedValue{Value: 15, Timestamp: 3},
+		2: storage.TimestampedValue{Value: 16, Timestamp: 3},
+		3: storage.TimestampedValue{Value: 0, Timestamp: 3},
+		4: storage.TimestampedValue{Value: 77, Timestamp: 3},
 	},
 	"addr3": {
-		1: oncetree.TimestampedValue{Value: 44, Timestamp: 3},
-		2: oncetree.TimestampedValue{Value: 88, Timestamp: 3},
-		4: oncetree.TimestampedValue{Value: -77, Timestamp: 3},
+		1: storage.TimestampedValue{Value: 44, Timestamp: 3},
+		2: storage.TimestampedValue{Value: 88, Timestamp: 3},
+		4: storage.TimestampedValue{Value: -77, Timestamp: 3},
 	},
 	"addr4": {
-		1: oncetree.TimestampedValue{Value: 15, Timestamp: 3},
-		2: oncetree.TimestampedValue{Value: 16, Timestamp: 3},
-		3: oncetree.TimestampedValue{Value: 0, Timestamp: 3},
-		4: oncetree.TimestampedValue{Value: 55, Timestamp: 3},
+		1: storage.TimestampedValue{Value: 15, Timestamp: 3},
+		2: storage.TimestampedValue{Value: 16, Timestamp: 3},
+		3: storage.TimestampedValue{Value: 0, Timestamp: 3},
+		4: storage.TimestampedValue{Value: 55, Timestamp: 3},
 	},
 }
 
@@ -101,7 +131,7 @@ func TestKeyValueStorage_WriteValue_NoAddr(t *testing.T) {
 	testKey := int64(1)
 	testValue := int64(10)
 	valueChanged := keyValueStorage.WriteValue(testAddr, testKey, testValue, 4)
-	assert.Equal(t, keyValueStorage[testAddr][testKey], oncetree.TimestampedValue{Value: testValue, Timestamp: 4})
+	assert.Equal(t, keyValueStorage[testAddr][testKey], storage.TimestampedValue{Value: testValue, Timestamp: 4})
 	assert.True(t, valueChanged)
 }
 
@@ -110,7 +140,7 @@ func TestKeyValueStorage_WriteValue_OverWrite(t *testing.T) {
 	testKey := int64(2)
 	testValue := int64(15)
 	valueChanged := keyValueStorage.WriteValue(testAddr, testKey, testValue, 4)
-	assert.Equal(t, keyValueStorage[testAddr][testKey], oncetree.TimestampedValue{Value: testValue, Timestamp: 4})
+	assert.Equal(t, keyValueStorage[testAddr][testKey], storage.TimestampedValue{Value: testValue, Timestamp: 4})
 	assert.True(t, valueChanged)
 }
 
@@ -121,13 +151,13 @@ func TestKeyValueStorage_WriteValue_NoChange(t *testing.T) {
 	testValue := int64(99)
 	testTs := int64(2)
 	valueChanged := keyValueStorage.WriteValue(testAddr, testKey, testValue, testTs)
-	assert.Equal(t, keyValueStorage[testAddr][testKey], oncetree.TimestampedValue{Value: 16, Timestamp: 3})
+	assert.Equal(t, keyValueStorage[testAddr][testKey], storage.TimestampedValue{Value: 16, Timestamp: 3})
 	assert.False(t, valueChanged)
 }
 
 // TestKeyValueStorageService_Write tests writing the same value to all nodes, and checking that the values has propagated to all nodes.
 func TestKeyValueStorageService_Write(t *testing.T) {
-	testNodes, wg := StartTestNodes()
+	testNodes, wg := oncetree.StartTestNodes()
 	time.Sleep(1 * time.Second)
 	cfg := createKeyValueStorageConfig()
 
@@ -166,7 +196,7 @@ func createKeyValueStorageConfig() *kvsprotos.Configuration {
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
 		),
 	)
-	cfg, err := manager.NewConfiguration(&oncetree.QSpec{NumNodes: len(nodeAddrs)}, gorums.WithNodeList(nodeAddrs))
+	cfg, err := manager.NewConfiguration(&storage.QSpec{NumNodes: len(nodeAddrs)}, gorums.WithNodeList(nodeAddrs))
 	if err != nil {
 		panic("failed to create cfg")
 	}

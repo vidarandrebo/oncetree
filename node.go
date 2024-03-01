@@ -9,6 +9,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/vidarandrebo/oncetree/failuredetector"
+
+	"github.com/vidarandrebo/oncetree/eventbus"
+	"github.com/vidarandrebo/oncetree/nodemanager"
+	"github.com/vidarandrebo/oncetree/storage"
+
 	"github.com/relab/gorums"
 	fdprotos "github.com/vidarandrebo/oncetree/protos/failuredetector"
 	kvsprotos "github.com/vidarandrebo/oncetree/protos/keyvaluestorage"
@@ -22,34 +28,36 @@ type Node struct {
 	rpcAddr                string
 	gorumsServer           *gorums.Server
 	gorumsManagers         *GorumsManagers
-	nodeManager            *NodeManager
+	nodeManager            *nodemanager.NodeManager
 	logger                 *log.Logger
 	timestamp              int64
-	failureDetector        *FailureDetector
-	keyValueStorageService *KeyValueStorageService
+	failureDetector        *failuredetector.FailureDetector
+	keyValueStorageService *storage.KeyValueStorageService
+	eventbus               *eventbus.EventBus
 	stopChan               chan string
 	nodeFailureChan        <-chan string
 }
 
 func NewNode(id string, rpcAddr string) *Node {
-	nodeManager := NewNodeManager(id, 2)
+	nodeManager := nodemanager.New(id, 2)
 	gorumsManagers := CreateGorumsManagers()
 	logger := log.New(os.Stderr, fmt.Sprintf("NodeID: %s ", id), log.Ltime|log.Lmsgprefix)
 	return &Node{
 		rpcAddr: rpcAddr,
 		id:      id,
-		failureDetector: NewFailureDetector(
+		failureDetector: failuredetector.New(
 			id,
 			logger,
 			nodeManager,
 			gorumsManagers.fdManager,
 		),
-		keyValueStorageService: NewKeyValueStorageService(
+		keyValueStorageService: storage.NewKeyValueStorageService(
 			id,
 			logger,
 			nodeManager,
 			gorumsManagers.kvsManager,
 		),
+		eventbus:       eventbus.New(logger),
 		nodeManager:    nodeManager,
 		gorumsManagers: gorumsManagers,
 		logger:         logger,
@@ -129,16 +137,16 @@ mainLoop:
 }
 
 // SetNeighboursFromNodeMap assumes a binary tree as slice where a nodes children are at index 2i+1 and 2i+2
-// Uses both a slice and a map to ensure consistent iteration order
+// Uses both a slice and a maps to ensure consistent iteration order
 func (n *Node) SetNeighboursFromNodeMap(nodeIDs []string, nodes map[string]string) {
 	for i, nodeID := range nodeIDs {
 		// find n as a child of current node -> current node is n's parent
 		if len(nodeIDs) > (2*i+1) && nodeIDs[2*i+1] == n.id {
-			n.nodeManager.AddNeighbour(nodeID, nodes[nodeID], Parent)
+			n.nodeManager.AddNeighbour(nodeID, nodes[nodeID], nodemanager.Parent)
 			continue
 		}
 		if len(nodeIDs) > (2*i+2) && nodeIDs[2*i+2] == n.id {
-			n.nodeManager.AddNeighbour(nodeID, nodes[nodeID], Parent)
+			n.nodeManager.AddNeighbour(nodeID, nodes[nodeID], nodemanager.Parent)
 			continue
 		}
 
@@ -146,11 +154,11 @@ func (n *Node) SetNeighboursFromNodeMap(nodeIDs []string, nodes map[string]strin
 		if nodeID == n.id {
 			if len(nodeIDs) > (2*i + 1) {
 				childId := nodeIDs[2*i+1]
-				n.nodeManager.AddNeighbour(childId, nodes[childId], Child)
+				n.nodeManager.AddNeighbour(childId, nodes[childId], nodemanager.Child)
 			}
 			if len(nodeIDs) > (2*i + 2) {
 				childId := nodeIDs[2*i+2]
-				n.nodeManager.AddNeighbour(childId, nodes[childId], Child)
+				n.nodeManager.AddNeighbour(childId, nodes[childId], nodemanager.Child)
 			}
 			continue
 		}
@@ -160,57 +168,8 @@ func (n *Node) SetNeighboursFromNodeMap(nodeIDs []string, nodes map[string]strin
 	n.logger.Printf("children: %v", n.nodeManager.GetChildren())
 }
 
-func (n *Node) isRoot() bool {
-	return n.nodeManager.GetParent() == nil
-}
-
 func (n *Node) Stop(msg string) {
 	n.stopChan <- msg
-}
-
-type NodeRole int
-
-const (
-	Parent NodeRole = iota
-	Child
-)
-
-type Neighbour struct {
-	ID       string
-	GorumsID uint32
-	Address  string
-	Group    map[string]*GroupMember
-	Role     NodeRole
-}
-
-func NewNeighbour(ID string, gorumsID uint32, address string, role NodeRole) *Neighbour {
-	return &Neighbour{
-		ID:       ID,
-		GorumsID: gorumsID,
-		Address:  address,
-		Group:    make(map[string]*GroupMember),
-		Role:     role,
-	}
-}
-
-func (n *Neighbour) String() string {
-	return fmt.Sprintf("Neighbour: { GorumsID: %d, Address: %s, Role: %d }", n.GorumsID, n.Address, n.Role)
-}
-
-type GroupMember struct {
-	Address string
-	Role    NodeRole
-}
-
-func (gm *GroupMember) String() string {
-	return fmt.Sprintf("GroupMember: { Address: %s, Role: %d }", gm.Address, gm.Role)
-}
-
-func NewGroupMember(address string, role NodeRole) *GroupMember {
-	return &GroupMember{
-		Address: address,
-		Role:    role,
-	}
 }
 
 func (n *Node) Crash(ctx gorums.ServerCtx, request *emptypb.Empty) (response *emptypb.Empty, err error) {

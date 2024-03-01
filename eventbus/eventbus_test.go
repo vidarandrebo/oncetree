@@ -2,12 +2,13 @@ package eventbus
 
 import (
 	"context"
-	"github.com/stretchr/testify/assert"
 	"log"
 	"reflect"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestEventBus_Handle(t *testing.T) {
@@ -27,6 +28,7 @@ func TestEventBus_Handle(t *testing.T) {
 	cancel()
 	wg.Wait()
 }
+
 func TestEventBus_Handle_ManyHandlers(t *testing.T) {
 	et := testEventTarget{count: 99}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -54,8 +56,7 @@ func TestEventBus_Handle_ManyHandlers(t *testing.T) {
 	wg.Wait()
 }
 
-type testEvent struct {
-}
+type testEvent struct{}
 
 type testEventTarget struct {
 	count int
