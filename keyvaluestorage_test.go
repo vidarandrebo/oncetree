@@ -10,7 +10,7 @@ import (
 	"github.com/relab/gorums"
 	"github.com/stretchr/testify/assert"
 	"github.com/vidarandrebo/oncetree"
-	kvsprotos "github.com/vidarandrebo/oncetree/protos/keyvaluestorageprotos"
+	kvsprotos "github.com/vidarandrebo/oncetree/protos/keyvaluestorage"
 	"google.golang.org/grpc"
 )
 
@@ -139,12 +139,16 @@ func TestKeyValueStorageService_Write(t *testing.T) {
 		assert.Nil(t, writeErr)
 	}
 	time.Sleep(1 * time.Second)
-	for _, node := range cfg.Nodes() {
-		response, readErr := node.Read(context.Background(), &kvsprotos.ReadRequest{
-			Key: 20,
-		})
-		assert.Nil(t, readErr)
-		assert.Equal(t, int64(100), response.Value)
+
+	responses, readErr := cfg.ReadAll(context.Background(), &kvsprotos.ReadRequest{
+		Key: 20,
+	})
+
+	// should be as many responses as number of nodes
+	assert.Equal(t, len(testNodes), len(responses.GetValue()))
+	assert.Nil(t, readErr)
+	for _, response := range responses.GetValue() {
+		assert.Equal(t, int64(100), response)
 	}
 
 	for _, node := range testNodes {

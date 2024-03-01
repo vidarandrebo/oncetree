@@ -3,9 +3,9 @@ syntax = "proto3";
 import "gorums.proto";
 import "google/protobuf/empty.proto";
 
-package keyvaluestorageprotos;
+package keyvaluestorage;
 
-option go_package = "github.com/vidarandrebo/oncetree/keyvaluestorageprotos";
+option go_package = "github.com/vidarandrebo/oncetree/keyvaluestorage";
 
 message ReadRequest { int64 Key = 1; }
 message ReadResponse { int64 Value = 1; }

@@ -10,8 +10,10 @@ import (
 	"time"
 
 	"github.com/relab/gorums"
-	"github.com/vidarandrebo/oncetree/protos/failuredetectorprotos"
-	"github.com/vidarandrebo/oncetree/protos/keyvaluestorageprotos"
+	fdprotos "github.com/vidarandrebo/oncetree/protos/failuredetector"
+	kvsprotos "github.com/vidarandrebo/oncetree/protos/keyvaluestorage"
+	"github.com/vidarandrebo/oncetree/protos/node"
+	nmprotos "github.com/vidarandrebo/oncetree/protos/nodemanager"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
@@ -30,7 +32,7 @@ type Node struct {
 }
 
 func NewNode(id string, rpcAddr string) *Node {
-	nodeManager := NewNodeManager()
+	nodeManager := NewNodeManager(id, 2)
 	gorumsManagers := CreateGorumsManagers()
 	logger := log.New(os.Stderr, fmt.Sprintf("NodeID: %s ", id), log.Ltime|log.Lmsgprefix)
 	return &Node{
@@ -79,8 +81,12 @@ startTryCreateConfigs:
 
 func (n *Node) startGorumsServer(addr string) {
 	n.gorumsServer = gorums.NewServer()
-	failuredetectorprotos.RegisterFailureDetectorServiceServer(n.gorumsServer, n.failureDetector)
-	keyvaluestorageprotos.RegisterKeyValueStorageServer(n.gorumsServer, n.keyValueStorageService)
+
+	fdprotos.RegisterFailureDetectorServiceServer(n.gorumsServer, n.failureDetector)
+	kvsprotos.RegisterKeyValueStorageServer(n.gorumsServer, n.keyValueStorageService)
+	nmprotos.RegisterNodeManagerServiceServer(n.gorumsServer, n.nodeManager)
+	node.RegisterNodeServiceServer(n.gorumsServer, n)
+
 	listener, listenErr := net.Listen("tcp", addr)
 	if listenErr != nil {
 		n.logger.Panicf("could not listen to address %v", addr)
@@ -170,14 +176,16 @@ const (
 )
 
 type Neighbour struct {
+	ID       string
 	GorumsID uint32
 	Address  string
 	Group    map[string]*GroupMember
 	Role     NodeRole
 }
 
-func NewNeighbour(gorumsID uint32, address string, role NodeRole) *Neighbour {
+func NewNeighbour(ID string, gorumsID uint32, address string, role NodeRole) *Neighbour {
 	return &Neighbour{
+		ID:       ID,
 		GorumsID: gorumsID,
 		Address:  address,
 		Group:    make(map[string]*GroupMember),

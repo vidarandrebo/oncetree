@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/relab/gorums"
-	kvsprotos "github.com/vidarandrebo/oncetree/protos/keyvaluestorageprotos"
+	kvsprotos "github.com/vidarandrebo/oncetree/protos/keyvaluestorage"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/emptypb"

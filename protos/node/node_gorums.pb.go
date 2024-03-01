@@ -2,14 +2,13 @@
 // versions:
 // 	protoc-gen-gorums v0.7.0-devel
 // 	protoc            v4.25.2
-// source: protos/failuredetectorprotos/failuredetector.proto
+// source: protos/node/node.proto
 
-package failuredetectorprotos
+package node
 
 import (
 	context "context"
 	fmt "fmt"
-
 	gorums "github.com/relab/gorums"
 	encoding "google.golang.org/grpc/encoding"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
@@ -145,34 +144,36 @@ type Node struct {
 	*gorums.RawNode
 }
 
-// Reference imports to suppress errors if they are not otherwise used.
-var _ emptypb.Empty
-
-// Heartbeat is a quorum call invoked on all nodes in configuration c,
-// with the same argument in, and returns a combined result.
-func (c *Configuration) Heartbeat(ctx context.Context, in *HeartbeatMessage, opts ...gorums.CallOption) {
-	cd := gorums.QuorumCallData{
-		Message: in,
-		Method:  "failuredetectorprotos.FailureDetectorService.Heartbeat",
-	}
-
-	c.RawConfiguration.Multicast(ctx, cd, opts...)
-}
-
-// QuorumSpec is the interface of quorum functions for FailureDetectorService.
+// QuorumSpec is the interface of quorum functions for NodeService.
 type QuorumSpec interface {
 	gorums.ConfigOption
 }
 
-// FailureDetectorService is the server-side API for the FailureDetectorService Service
-type FailureDetectorService interface {
-	Heartbeat(ctx gorums.ServerCtx, request *HeartbeatMessage)
+// Crash is a quorum call invoked on all nodes in configuration c,
+// with the same argument in, and returns a combined result.
+func (n *Node) Crash(ctx context.Context, in *emptypb.Empty) (resp *emptypb.Empty, err error) {
+	cd := gorums.CallData{
+		Message: in,
+		Method:  "node.NodeService.Crash",
+	}
+
+	res, err := n.RawNode.RPCCall(ctx, cd)
+	if err != nil {
+		return nil, err
+	}
+	return res.(*emptypb.Empty), err
 }
 
-func RegisterFailureDetectorServiceServer(srv *gorums.Server, impl FailureDetectorService) {
-	srv.RegisterHandler("failuredetectorprotos.FailureDetectorService.Heartbeat", func(ctx gorums.ServerCtx, in *gorums.Message, _ chan<- *gorums.Message) {
-		req := in.Message.(*HeartbeatMessage)
+// NodeService is the server-side API for the NodeService Service
+type NodeService interface {
+	Crash(ctx gorums.ServerCtx, request *emptypb.Empty) (response *emptypb.Empty, err error)
+}
+
+func RegisterNodeServiceServer(srv *gorums.Server, impl NodeService) {
+	srv.RegisterHandler("node.NodeService.Crash", func(ctx gorums.ServerCtx, in *gorums.Message, finished chan<- *gorums.Message) {
+		req := in.Message.(*emptypb.Empty)
 		defer ctx.Release()
-		impl.Heartbeat(ctx, req)
+		resp, err := impl.Crash(ctx, req)
+		gorums.SendMessage(ctx, finished, gorums.WrapMessage(in.Metadata, resp, err))
 	})
 }

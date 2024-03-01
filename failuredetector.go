@@ -8,7 +8,7 @@ import (
 
 	"github.com/relab/gorums"
 
-	fdprotos "github.com/vidarandrebo/oncetree/protos/failuredetectorprotos"
+	fdprotos "github.com/vidarandrebo/oncetree/protos/failuredetector"
 )
 
 type FailureDetector struct {

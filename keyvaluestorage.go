@@ -3,12 +3,13 @@ package oncetree
 import (
 	"context"
 	"fmt"
+	"github.com/vidarandrebo/oncetree/concurrent/mutex"
 	"log"
 	"sync"
 	"time"
 
 	"github.com/relab/gorums"
-	kvsprotos "github.com/vidarandrebo/oncetree/protos/keyvaluestorageprotos"
+	kvsprotos "github.com/vidarandrebo/oncetree/protos/keyvaluestorage"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
@@ -17,7 +18,7 @@ type KeyValueStorageService struct {
 	storage       KeyValueStorage
 	logger        *log.Logger
 	mut           sync.Mutex
-	timestamp     *RWMutex[int64]
+	timestamp     *mutex.RWMutex[int64]
 	gorumsConfig  *kvsprotos.Configuration
 	gorumsManager *kvsprotos.Manager
 	nodeManager   *NodeManager
@@ -30,7 +31,7 @@ func NewKeyValueStorageService(id string, logger *log.Logger, nodeManager *NodeM
 		storage:       *NewKeyValueStorage(),
 		gorumsManager: gorumsManager,
 		nodeManager:   nodeManager,
-		timestamp:     NewRWMutex[int64](0),
+		timestamp:     mutex.New[int64](0),
 	}
 }
 

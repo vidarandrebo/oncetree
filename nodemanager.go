@@ -1,19 +1,35 @@
 package oncetree
 
 import (
+	"cmp"
 	"fmt"
+	"github.com/vidarandrebo/oncetree/concurrent/mutex"
+	"log"
+	"slices"
+	"sync"
+
+	"github.com/relab/gorums"
+	nmprotos "github.com/vidarandrebo/oncetree/protos/nodemanager"
 )
 
 type NodeManager struct {
+	id           string
+	fanout       int
 	neighbours   *ConcurrentMap[string, *Neighbour]
 	epoch        int64
-	nextGorumsID *RWMutex[uint32]
+	nextGorumsID *mutex.RWMutex[uint32]
+	lastJoinID   *mutex.RWMutex[string]
+	joinMut      sync.Mutex
+	logger       *log.Logger
 }
 
-func NewNodeManager() *NodeManager {
+func NewNodeManager(id string, fanout int) *NodeManager {
 	return &NodeManager{
+		id:           id,
+		fanout:       fanout,
 		neighbours:   NewConcurrentMap[string, *Neighbour](),
-		nextGorumsID: NewRWMutex[uint32](0),
+		nextGorumsID: mutex.New[uint32](0),
+		lastJoinID:   mutex.New[string](""),
 	}
 }
 
@@ -37,7 +53,7 @@ func (nm *NodeManager) AddNeighbour(nodeID string, address string, role NodeRole
 	gorumsID := *nextID
 	*nextID += 1
 	nm.nextGorumsID.Unlock(&nextID)
-	neighbour := NewNeighbour(gorumsID, address, role)
+	neighbour := NewNeighbour(nodeID, gorumsID, address, role)
 	nm.setNeighbour(nodeID, neighbour)
 }
 
@@ -78,6 +94,9 @@ func (nm *NodeManager) GetChildren() []*Neighbour {
 			children = append(children, neighbour)
 		}
 	}
+	slices.SortFunc(children, func(a, b *Neighbour) int {
+		return cmp.Compare(a.ID, b.ID)
+	})
 	return children
 }
 
@@ -88,4 +107,69 @@ func (nm *NodeManager) GetParent() *Neighbour {
 		}
 	}
 	return nil
+}
+
+func (nm *NodeManager) Join(ctx gorums.ServerCtx, request *nmprotos.JoinRequest) (response *nmprotos.JoinResponse, err error) {
+	nm.joinMut.Lock()
+	defer nm.joinMut.Unlock()
+	response = &nmprotos.JoinResponse{
+		OK:          false,
+		NodeID:      nm.id,
+		NextAddress: "",
+	}
+	children := nm.GetChildren()
+
+	// respond with one of the children's addresses if max fanout has been reached
+	if len(children) == nm.fanout {
+		nextPathID := nm.NextJoinID()
+		nextPath, _ := nm.neighbours.Get(nextPathID)
+		response.OK = false
+		response.NextAddress = nextPath.Address
+		return response, nil
+	}
+	response.OK = true
+	response.NodeID = nm.id
+	nm.AddNeighbour(request.NodeID, request.Address, Child)
+	return response, nil
+}
+
+// NextJoinID returns the id of the node to send the next join request to
+//
+// Should only be called if max fanout has been reached, fn will panic if node has no children
+func (nm *NodeManager) NextJoinID() string {
+	lastJoinID := nm.lastJoinID.Lock()
+	defer nm.lastJoinID.Unlock(&lastJoinID)
+	children := nm.GetChildren()
+	if len(children) == 0 {
+		nm.logger.Panicln("cannot call NextJoinID when node has no children")
+	}
+	lastJoinPathIndex := 0
+	for i, child := range children {
+		if child.ID == *lastJoinID {
+			lastJoinPathIndex = i
+		}
+	}
+	// last path was last child -> return first child
+	if lastJoinPathIndex == len(children)-1 {
+		*lastJoinID = children[0].ID
+		return *lastJoinID
+	}
+	// increment last join path, then return
+	*lastJoinID = children[lastJoinPathIndex+1].ID
+	return *lastJoinID
+}
+
+func (nm *NodeManager) Prepare(ctx gorums.ServerCtx, request *nmprotos.PrepareMessage) (response *nmprotos.PromiseMessage, err error) {
+	// TODO implement me
+	panic("implement me")
+}
+
+func (nm *NodeManager) Accept(ctx gorums.ServerCtx, request *nmprotos.AcceptMessage) (response *nmprotos.LearnMessage, err error) {
+	// TODO implement me
+	panic("implement me")
+}
+
+func (nm *NodeManager) Commit(ctx gorums.ServerCtx, request *nmprotos.CommitMessage) {
+	// TODO implement me
+	panic("implement me")
 }

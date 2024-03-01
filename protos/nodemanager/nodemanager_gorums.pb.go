@@ -2,14 +2,13 @@
 // versions:
 // 	protoc-gen-gorums v0.7.0-devel
 // 	protoc            v4.25.2
-// source: protos/keyvaluestorageprotos/keyvaluestorage.proto
+// source: protos/nodemanager/nodemanager.proto
 
-package keyvaluestorageprotos
+package nodemanager
 
 import (
 	context "context"
 	fmt "fmt"
-
 	gorums "github.com/relab/gorums"
 	encoding "google.golang.org/grpc/encoding"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -146,144 +145,140 @@ type Node struct {
 	*gorums.RawNode
 }
 
-// QuorumSpec is the interface of quorum functions for KeyValueStorage.
+// Reference imports to suppress errors if they are not otherwise used.
+var _ emptypb.Empty
+
+// Commit is a quorum call invoked on all nodes in configuration c,
+// with the same argument in, and returns a combined result.
+func (c *Configuration) Commit(ctx context.Context, in *CommitMessage, opts ...gorums.CallOption) {
+	cd := gorums.QuorumCallData{
+		Message: in,
+		Method:  "nodemanager.NodeManagerService.Commit",
+	}
+
+	c.RawConfiguration.Multicast(ctx, cd, opts...)
+}
+
+// QuorumSpec is the interface of quorum functions for NodeManagerService.
 type QuorumSpec interface {
 	gorums.ConfigOption
 
-	// ReadAllQF is the quorum function for the ReadAll
+	// PrepareQF is the quorum function for the Prepare
 	// quorum call method. The in parameter is the request object
-	// supplied to the ReadAll method at call time, and may or may not
+	// supplied to the Prepare method at call time, and may or may not
 	// be used by the quorum function. If the in parameter is not needed
-	// you should implement your quorum function with '_ *ReadRequest'.
-	ReadAllQF(in *ReadRequest, replies map[uint32]*ReadAllResponse) (*ReadAllResponse, bool)
+	// you should implement your quorum function with '_ *PrepareMessage'.
+	PrepareQF(in *PrepareMessage, replies map[uint32]*PromiseMessage) (*PromiseMessage, bool)
+
+	// AcceptQF is the quorum function for the Accept
+	// quorum call method. The in parameter is the request object
+	// supplied to the Accept method at call time, and may or may not
+	// be used by the quorum function. If the in parameter is not needed
+	// you should implement your quorum function with '_ *AcceptMessage'.
+	AcceptQF(in *AcceptMessage, replies map[uint32]*LearnMessage) (*LearnMessage, bool)
 }
 
-// ReadAll is a quorum call invoked on all nodes in configuration c,
+// Prepare is a quorum call invoked on all nodes in configuration c,
 // with the same argument in, and returns a combined result.
-func (c *Configuration) ReadAll(ctx context.Context, in *ReadRequest) (resp *ReadAllResponse, err error) {
+func (c *Configuration) Prepare(ctx context.Context, in *PrepareMessage) (resp *PromiseMessage, err error) {
 	cd := gorums.QuorumCallData{
 		Message: in,
-		Method:  "keyvaluestorageprotos.KeyValueStorage.ReadAll",
+		Method:  "nodemanager.NodeManagerService.Prepare",
 	}
 	cd.QuorumFunction = func(req protoreflect.ProtoMessage, replies map[uint32]protoreflect.ProtoMessage) (protoreflect.ProtoMessage, bool) {
-		r := make(map[uint32]*ReadAllResponse, len(replies))
+		r := make(map[uint32]*PromiseMessage, len(replies))
 		for k, v := range replies {
-			r[k] = v.(*ReadAllResponse)
+			r[k] = v.(*PromiseMessage)
 		}
-		return c.qspec.ReadAllQF(req.(*ReadRequest), r)
+		return c.qspec.PrepareQF(req.(*PrepareMessage), r)
 	}
 
 	res, err := c.RawConfiguration.QuorumCall(ctx, cd)
 	if err != nil {
 		return nil, err
 	}
-	return res.(*ReadAllResponse), err
+	return res.(*PromiseMessage), err
 }
 
-// Write is a quorum call invoked on all nodes in configuration c,
+// Accept is a quorum call invoked on all nodes in configuration c,
 // with the same argument in, and returns a combined result.
-func (n *Node) Write(ctx context.Context, in *WriteRequest) (resp *emptypb.Empty, err error) {
+func (c *Configuration) Accept(ctx context.Context, in *AcceptMessage) (resp *LearnMessage, err error) {
+	cd := gorums.QuorumCallData{
+		Message: in,
+		Method:  "nodemanager.NodeManagerService.Accept",
+	}
+	cd.QuorumFunction = func(req protoreflect.ProtoMessage, replies map[uint32]protoreflect.ProtoMessage) (protoreflect.ProtoMessage, bool) {
+		r := make(map[uint32]*LearnMessage, len(replies))
+		for k, v := range replies {
+			r[k] = v.(*LearnMessage)
+		}
+		return c.qspec.AcceptQF(req.(*AcceptMessage), r)
+	}
+
+	res, err := c.RawConfiguration.QuorumCall(ctx, cd)
+	if err != nil {
+		return nil, err
+	}
+	return res.(*LearnMessage), err
+}
+
+// Join is a quorum call invoked on all nodes in configuration c,
+// with the same argument in, and returns a combined result.
+func (n *Node) Join(ctx context.Context, in *JoinRequest) (resp *JoinResponse, err error) {
 	cd := gorums.CallData{
 		Message: in,
-		Method:  "keyvaluestorageprotos.KeyValueStorage.Write",
+		Method:  "nodemanager.NodeManagerService.Join",
 	}
 
 	res, err := n.RawNode.RPCCall(ctx, cd)
 	if err != nil {
 		return nil, err
 	}
-	return res.(*emptypb.Empty), err
+	return res.(*JoinResponse), err
 }
 
-// Read is a quorum call invoked on all nodes in configuration c,
-// with the same argument in, and returns a combined result.
-func (n *Node) Read(ctx context.Context, in *ReadRequest) (resp *ReadResponse, err error) {
-	cd := gorums.CallData{
-		Message: in,
-		Method:  "keyvaluestorageprotos.KeyValueStorage.Read",
-	}
-
-	res, err := n.RawNode.RPCCall(ctx, cd)
-	if err != nil {
-		return nil, err
-	}
-	return res.(*ReadResponse), err
+// NodeManagerService is the server-side API for the NodeManagerService Service
+type NodeManagerService interface {
+	Join(ctx gorums.ServerCtx, request *JoinRequest) (response *JoinResponse, err error)
+	Prepare(ctx gorums.ServerCtx, request *PrepareMessage) (response *PromiseMessage, err error)
+	Accept(ctx gorums.ServerCtx, request *AcceptMessage) (response *LearnMessage, err error)
+	Commit(ctx gorums.ServerCtx, request *CommitMessage)
 }
 
-// Gossip is a quorum call invoked on all nodes in configuration c,
-// with the same argument in, and returns a combined result.
-func (n *Node) Gossip(ctx context.Context, in *GossipMessage) (resp *emptypb.Empty, err error) {
-	cd := gorums.CallData{
-		Message: in,
-		Method:  "keyvaluestorageprotos.KeyValueStorage.Gossip",
-	}
-
-	res, err := n.RawNode.RPCCall(ctx, cd)
-	if err != nil {
-		return nil, err
-	}
-	return res.(*emptypb.Empty), err
-}
-
-// PrintState is a quorum call invoked on all nodes in configuration c,
-// with the same argument in, and returns a combined result.
-func (n *Node) PrintState(ctx context.Context, in *emptypb.Empty) (resp *emptypb.Empty, err error) {
-	cd := gorums.CallData{
-		Message: in,
-		Method:  "keyvaluestorageprotos.KeyValueStorage.PrintState",
-	}
-
-	res, err := n.RawNode.RPCCall(ctx, cd)
-	if err != nil {
-		return nil, err
-	}
-	return res.(*emptypb.Empty), err
-}
-
-// KeyValueStorage is the server-side API for the KeyValueStorage Service
-type KeyValueStorage interface {
-	Write(ctx gorums.ServerCtx, request *WriteRequest) (response *emptypb.Empty, err error)
-	Read(ctx gorums.ServerCtx, request *ReadRequest) (response *ReadResponse, err error)
-	ReadAll(ctx gorums.ServerCtx, request *ReadRequest) (response *ReadAllResponse, err error)
-	Gossip(ctx gorums.ServerCtx, request *GossipMessage) (response *emptypb.Empty, err error)
-	PrintState(ctx gorums.ServerCtx, request *emptypb.Empty) (response *emptypb.Empty, err error)
-}
-
-func RegisterKeyValueStorageServer(srv *gorums.Server, impl KeyValueStorage) {
-	srv.RegisterHandler("keyvaluestorageprotos.KeyValueStorage.Write", func(ctx gorums.ServerCtx, in *gorums.Message, finished chan<- *gorums.Message) {
-		req := in.Message.(*WriteRequest)
+func RegisterNodeManagerServiceServer(srv *gorums.Server, impl NodeManagerService) {
+	srv.RegisterHandler("nodemanager.NodeManagerService.Join", func(ctx gorums.ServerCtx, in *gorums.Message, finished chan<- *gorums.Message) {
+		req := in.Message.(*JoinRequest)
 		defer ctx.Release()
-		resp, err := impl.Write(ctx, req)
+		resp, err := impl.Join(ctx, req)
 		gorums.SendMessage(ctx, finished, gorums.WrapMessage(in.Metadata, resp, err))
 	})
-	srv.RegisterHandler("keyvaluestorageprotos.KeyValueStorage.Read", func(ctx gorums.ServerCtx, in *gorums.Message, finished chan<- *gorums.Message) {
-		req := in.Message.(*ReadRequest)
+	srv.RegisterHandler("nodemanager.NodeManagerService.Prepare", func(ctx gorums.ServerCtx, in *gorums.Message, finished chan<- *gorums.Message) {
+		req := in.Message.(*PrepareMessage)
 		defer ctx.Release()
-		resp, err := impl.Read(ctx, req)
+		resp, err := impl.Prepare(ctx, req)
 		gorums.SendMessage(ctx, finished, gorums.WrapMessage(in.Metadata, resp, err))
 	})
-	srv.RegisterHandler("keyvaluestorageprotos.KeyValueStorage.ReadAll", func(ctx gorums.ServerCtx, in *gorums.Message, finished chan<- *gorums.Message) {
-		req := in.Message.(*ReadRequest)
+	srv.RegisterHandler("nodemanager.NodeManagerService.Accept", func(ctx gorums.ServerCtx, in *gorums.Message, finished chan<- *gorums.Message) {
+		req := in.Message.(*AcceptMessage)
 		defer ctx.Release()
-		resp, err := impl.ReadAll(ctx, req)
+		resp, err := impl.Accept(ctx, req)
 		gorums.SendMessage(ctx, finished, gorums.WrapMessage(in.Metadata, resp, err))
 	})
-	srv.RegisterHandler("keyvaluestorageprotos.KeyValueStorage.Gossip", func(ctx gorums.ServerCtx, in *gorums.Message, finished chan<- *gorums.Message) {
-		req := in.Message.(*GossipMessage)
+	srv.RegisterHandler("nodemanager.NodeManagerService.Commit", func(ctx gorums.ServerCtx, in *gorums.Message, _ chan<- *gorums.Message) {
+		req := in.Message.(*CommitMessage)
 		defer ctx.Release()
-		resp, err := impl.Gossip(ctx, req)
-		gorums.SendMessage(ctx, finished, gorums.WrapMessage(in.Metadata, resp, err))
-	})
-	srv.RegisterHandler("keyvaluestorageprotos.KeyValueStorage.PrintState", func(ctx gorums.ServerCtx, in *gorums.Message, finished chan<- *gorums.Message) {
-		req := in.Message.(*emptypb.Empty)
-		defer ctx.Release()
-		resp, err := impl.PrintState(ctx, req)
-		gorums.SendMessage(ctx, finished, gorums.WrapMessage(in.Metadata, resp, err))
+		impl.Commit(ctx, req)
 	})
 }
 
-type internalReadAllResponse struct {
+type internalLearnMessage struct {
 	nid   uint32
-	reply *ReadAllResponse
+	reply *LearnMessage
+	err   error
+}
+
+type internalPromiseMessage struct {
+	nid   uint32
+	reply *PromiseMessage
 	err   error
 }
