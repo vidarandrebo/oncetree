@@ -6,6 +6,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/vidarandrebo/oncetree/eventbus"
+
 	"github.com/vidarandrebo/oncetree/concurrent/hashset"
 	"github.com/vidarandrebo/oncetree/concurrent/maps"
 	"github.com/vidarandrebo/oncetree/nodemanager"
@@ -22,13 +24,13 @@ type FailureDetector struct {
 	suspected     *hashset.ConcurrentHashSet[string]
 	delay         int
 	logger        *log.Logger
-	subscribers   []chan<- string
 	nodeManager   *nodemanager.NodeManager
 	gorumsConfig  *fdprotos.Configuration
 	gorumsManager *fdprotos.Manager
+	eventBus      *eventbus.EventBus
 }
 
-func New(id string, logger *log.Logger, nodeManager *nodemanager.NodeManager, gorumsManager *fdprotos.Manager) *FailureDetector {
+func New(id string, logger *log.Logger, nodeManager *nodemanager.NodeManager, gorumsManager *fdprotos.Manager, eventBus *eventbus.EventBus) *FailureDetector {
 	return &FailureDetector{
 		id:            id,
 		nodes:         hashset.New[string](),
@@ -36,9 +38,9 @@ func New(id string, logger *log.Logger, nodeManager *nodemanager.NodeManager, go
 		suspected:     hashset.New[string](),
 		nodeManager:   nodeManager,
 		gorumsManager: gorumsManager,
+		eventBus:      eventBus,
 		delay:         5,
 		logger:        logger,
-		subscribers:   make([]chan<- string, 0),
 	}
 }
 
@@ -67,16 +69,8 @@ func (fd *FailureDetector) DeregisterNode(nodeID string) {
 	fd.suspected.Delete(nodeID)
 }
 
-func (fd *FailureDetector) Subscribe() <-chan string {
-	channel := make(chan string)
-	fd.subscribers = append(fd.subscribers, channel)
-	return channel
-}
-
 func (fd *FailureDetector) Suspect(nodeID string) {
-	for _, c := range fd.subscribers {
-		c <- nodeID
-	}
+	fd.eventBus.Push(NewNodeFailedEvent(nodeID))
 }
 
 func (fd *FailureDetector) Run(ctx context.Context, wg *sync.WaitGroup) {

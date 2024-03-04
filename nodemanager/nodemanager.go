@@ -2,10 +2,13 @@ package nodemanager
 
 import (
 	"cmp"
+	"context"
 	"fmt"
+	"github.com/google/uuid"
 	"log"
 	"slices"
 	"sync"
+	"time"
 
 	"github.com/vidarandrebo/oncetree/concurrent/maps"
 	"github.com/vidarandrebo/oncetree/concurrent/mutex"
@@ -15,23 +18,29 @@ import (
 )
 
 type NodeManager struct {
-	id           string
-	fanout       int
-	neighbours   *maps.ConcurrentMap[string, *Neighbour]
-	epoch        int64
-	nextGorumsID *mutex.RWMutex[uint32]
-	lastJoinID   *mutex.RWMutex[string]
-	joinMut      sync.Mutex
-	logger       *log.Logger
+	id            string
+	address       string
+	fanout        int
+	neighbours    *maps.ConcurrentMap[string, *Neighbour]
+	epoch         int64
+	nextGorumsID  *mutex.RWMutex[uint32]
+	lastJoinID    *mutex.RWMutex[string]
+	joinMut       sync.Mutex
+	logger        *log.Logger
+	gorumsManager *nmprotos.Manager
+	gorumsConfig  *nmprotos.Configuration
 }
 
-func New(id string, fanout int) *NodeManager {
+func New(id string, address string, fanout int, gorumsConfig *nmprotos.Configuration, gorumsManager *nmprotos.Manager) *NodeManager {
 	return &NodeManager{
-		id:           id,
-		fanout:       fanout,
-		neighbours:   maps.NewConcurrentMap[string, *Neighbour](),
-		nextGorumsID: mutex.New[uint32](0),
-		lastJoinID:   mutex.New[string](""),
+		id:            id,
+		address:       address,
+		fanout:        fanout,
+		neighbours:    maps.NewConcurrentMap[string, *Neighbour](),
+		nextGorumsID:  mutex.New[uint32](0),
+		lastJoinID:    mutex.New[string](""),
+		gorumsManager: gorumsManager,
+		gorumsConfig:  gorumsConfig,
 	}
 }
 
@@ -72,6 +81,24 @@ func (nm *NodeManager) AllNeighbourIDs() []string {
 	return nm.neighbours.Keys()
 }
 
+func (nm *NodeManager) TmpGorumsMap() map[string]uint32 {
+	gorumsMap := make(map[string]uint32)
+	for _, node := range nm.neighbours.Values() {
+		if node.Role == Tmp {
+			gorumsMap[node.Address] = node.GorumsID
+			break
+		}
+	}
+	return gorumsMap
+}
+func (nm *NodeManager) clearTmp() {
+	for _, node := range nm.neighbours.Values() {
+		if node.Role == Tmp {
+			nm.neighbours.Delete(node.ID)
+		}
+	}
+}
+
 func (nm *NodeManager) AllNeighbourAddrs() []string {
 	addresses := make([]string, 0)
 	for _, neighbour := range nm.neighbours.Values() {
@@ -109,6 +136,34 @@ func (nm *NodeManager) GetParent() *Neighbour {
 		}
 	}
 	return nil
+}
+
+func (nm *NodeManager) SendJoin(knownAddr string) {
+	joined := false
+	for !joined {
+		nm.gorumsManager.Close()
+		knownNodeID, _ := uuid.NewV7()
+		nm.AddNeighbour(knownNodeID.String(), knownAddr, Tmp)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		cfg, err := nm.gorumsManager.NewConfiguration(gorums.WithNodeMap(nm.TmpGorumsMap()))
+		if err != nil {
+			nm.logger.Panicln(err)
+		}
+		nodes := cfg.Nodes()
+		joinRequest := &nmprotos.JoinRequest{
+			NodeID:  nm.id,
+			Address: nm.address,
+		}
+		response, err := nodes[0].Join(ctx, joinRequest)
+		if response.OK {
+			joined = true
+			nm.AddNeighbour(response.NodeID, knownAddr, Parent)
+		} else {
+			knownAddr = response.NextAddress
+		}
+		nm.clearTmp()
+		cancel()
+	}
 }
 
 func (nm *NodeManager) Join(ctx gorums.ServerCtx, request *nmprotos.JoinRequest) (response *nmprotos.JoinResponse, err error) {
@@ -174,49 +229,4 @@ func (nm *NodeManager) Accept(ctx gorums.ServerCtx, request *nmprotos.AcceptMess
 func (nm *NodeManager) Commit(ctx gorums.ServerCtx, request *nmprotos.CommitMessage) {
 	// TODO implement me
 	panic("implement me")
-}
-
-type NodeRole int
-
-const (
-	Parent NodeRole = iota
-	Child
-)
-
-type Neighbour struct {
-	ID       string
-	GorumsID uint32
-	Address  string
-	Group    map[string]*GroupMember
-	Role     NodeRole
-}
-
-func NewNeighbour(ID string, gorumsID uint32, address string, role NodeRole) *Neighbour {
-	return &Neighbour{
-		ID:       ID,
-		GorumsID: gorumsID,
-		Address:  address,
-		Group:    make(map[string]*GroupMember),
-		Role:     role,
-	}
-}
-
-func (n *Neighbour) String() string {
-	return fmt.Sprintf("Neighbour: { GorumsID: %d, Address: %s, Role: %d }", n.GorumsID, n.Address, n.Role)
-}
-
-type GroupMember struct {
-	Address string
-	Role    NodeRole
-}
-
-func (gm *GroupMember) String() string {
-	return fmt.Sprintf("GroupMember: { Address: %s, Role: %d }", gm.Address, gm.Role)
-}
-
-func NewGroupMember(address string, role NodeRole) *GroupMember {
-	return &GroupMember{
-		Address: address,
-		Role:    role,
-	}
 }

@@ -3,15 +3,16 @@ package oncetree
 import (
 	"context"
 	"fmt"
+	"github.com/google/uuid"
 	"log"
 	"net"
 	"os"
+	"reflect"
 	"sync"
 	"time"
 
-	"github.com/vidarandrebo/oncetree/failuredetector"
-
 	"github.com/vidarandrebo/oncetree/eventbus"
+	"github.com/vidarandrebo/oncetree/failuredetector"
 	"github.com/vidarandrebo/oncetree/nodemanager"
 	"github.com/vidarandrebo/oncetree/storage"
 
@@ -35,13 +36,16 @@ type Node struct {
 	keyValueStorageService *storage.KeyValueStorageService
 	eventbus               *eventbus.EventBus
 	stopChan               chan string
-	nodeFailureChan        <-chan string
 }
 
 func NewNode(id string, rpcAddr string) *Node {
-	nodeManager := nodemanager.New(id, 2)
-	gorumsManagers := CreateGorumsManagers()
+	if id == "" {
+		id = uuid.New().String()
+	}
 	logger := log.New(os.Stderr, fmt.Sprintf("NodeID: %s ", id), log.Ltime|log.Lmsgprefix)
+	nodeManager := nodemanager.New(id, 2)
+	eventBus := eventbus.New(logger)
+	gorumsManagers := CreateGorumsManagers()
 	return &Node{
 		rpcAddr: rpcAddr,
 		id:      id,
@@ -50,6 +54,7 @@ func NewNode(id string, rpcAddr string) *Node {
 			logger,
 			nodeManager,
 			gorumsManagers.fdManager,
+			eventBus,
 		),
 		keyValueStorageService: storage.NewKeyValueStorageService(
 			id,
@@ -57,7 +62,7 @@ func NewNode(id string, rpcAddr string) *Node {
 			nodeManager,
 			gorumsManagers.kvsManager,
 		),
-		eventbus:       eventbus.New(logger),
+		eventbus:       eventBus,
 		nodeManager:    nodeManager,
 		gorumsManagers: gorumsManagers,
 		logger:         logger,
@@ -87,6 +92,18 @@ startTryCreateConfigs:
 	}
 }
 
+func (n *Node) setupEventHandlers() {
+	n.eventbus.RegisterHandler(reflect.TypeOf(failuredetector.NodeFailedEvent{}), func(e any) {
+		if event, ok := e.(failuredetector.NodeFailedEvent); ok {
+			n.nodeFailedHandler(event)
+		}
+	})
+}
+
+func (n *Node) nodeFailedHandler(e failuredetector.NodeFailedEvent) {
+	n.logger.Printf("node with id %s has failed", e.NodeID)
+}
+
 func (n *Node) startGorumsServer(addr string) {
 	n.gorumsServer = gorums.NewServer()
 
@@ -114,7 +131,7 @@ func (n *Node) Run() {
 	defer cancel()
 	n.startGorumsServer(n.rpcAddr)
 	n.setupGorumsConfigs()
-	n.nodeFailureChan = n.failureDetector.Subscribe()
+	n.setupEventHandlers()
 	wg.Add(1)
 	go n.failureDetector.Run(ctx, &wg)
 
@@ -123,8 +140,6 @@ func (n *Node) Run() {
 mainLoop:
 	for {
 		select {
-		case failedNode := <-n.nodeFailureChan:
-			n.nodeManager.HandleFailure(failedNode)
 		case nodeExitMessage = <-n.stopChan:
 			n.logger.Println("Main loop stopped manually via stop channel")
 			cancel()
@@ -134,6 +149,15 @@ mainLoop:
 	wg.Wait()
 	n.gorumsServer.Stop()
 	n.logger.Printf("Exiting after message \"%s\" on stop channel", nodeExitMessage)
+}
+
+func (n *Node) Stop(msg string) {
+	n.stopChan <- msg
+}
+
+func (n *Node) Crash(ctx gorums.ServerCtx, request *emptypb.Empty) (response *emptypb.Empty, err error) {
+	n.Stop("crash RPC")
+	return &emptypb.Empty{}, nil
 }
 
 // SetNeighboursFromNodeMap assumes a binary tree as slice where a nodes children are at index 2i+1 and 2i+2
@@ -166,13 +190,4 @@ func (n *Node) SetNeighboursFromNodeMap(nodeIDs []string, nodes map[string]strin
 	}
 	n.logger.Printf("parent: %v", n.nodeManager.GetParent())
 	n.logger.Printf("children: %v", n.nodeManager.GetChildren())
-}
-
-func (n *Node) Stop(msg string) {
-	n.stopChan <- msg
-}
-
-func (n *Node) Crash(ctx gorums.ServerCtx, request *emptypb.Empty) (response *emptypb.Empty, err error) {
-	n.Stop("crash RPC")
-	return &emptypb.Empty{}, nil
 }

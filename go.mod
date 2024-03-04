@@ -3,9 +3,10 @@ module github.com/vidarandrebo/oncetree
 go 1.22.0
 
 require (
+	github.com/google/uuid v1.6.0
 	github.com/relab/gorums v0.7.1-0.20240202151124-d9b97fea7691
-	github.com/stretchr/testify v1.8.4
-	google.golang.org/grpc v1.61.0
+	github.com/stretchr/testify v1.9.0
+	google.golang.org/grpc v1.62.0
 	google.golang.org/protobuf v1.32.0
 )
 
