@@ -9,11 +9,12 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/vidarandrebo/oncetree/consts"
 )
 
 func TestEventBus_Handle(t *testing.T) {
 	et := testEventTarget{count: 99}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
 	e := testEvent{}
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -31,7 +32,7 @@ func TestEventBus_Handle(t *testing.T) {
 
 func TestEventBus_Handle_ManyHandlers(t *testing.T) {
 	et := testEventTarget{count: 99}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
 	e := testEvent{}
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -81,7 +82,7 @@ type testEventWithData struct {
 
 func TestEventBus_Handle_WithData(t *testing.T) {
 	et := testEventTarget{count: 99}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
 	e := testEventWithData{
 		value1: 5,
 		value2: 10,

@@ -7,13 +7,12 @@
 package nodemanager
 
 import (
-	reflect "reflect"
-	sync "sync"
-
 	_ "github.com/relab/gorums"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
+	reflect "reflect"
+	sync "sync"
 )
 
 const (
@@ -481,19 +480,17 @@ func file_protos_nodemanager_nodemanager_proto_rawDescGZIP() []byte {
 	return file_protos_nodemanager_nodemanager_proto_rawDescData
 }
 
-var (
-	file_protos_nodemanager_nodemanager_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
-	file_protos_nodemanager_nodemanager_proto_goTypes  = []interface{}{
-		(*JoinRequest)(nil),    // 0: nodemanager.JoinRequest
-		(*JoinResponse)(nil),   // 1: nodemanager.JoinResponse
-		(*PrepareMessage)(nil), // 2: nodemanager.PrepareMessage
-		(*PromiseMessage)(nil), // 3: nodemanager.PromiseMessage
-		(*AcceptMessage)(nil),  // 4: nodemanager.AcceptMessage
-		(*LearnMessage)(nil),   // 5: nodemanager.LearnMessage
-		(*CommitMessage)(nil),  // 6: nodemanager.CommitMessage
-		(*emptypb.Empty)(nil),  // 7: google.protobuf.Empty
-	}
-)
+var file_protos_nodemanager_nodemanager_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_protos_nodemanager_nodemanager_proto_goTypes = []interface{}{
+	(*JoinRequest)(nil),    // 0: nodemanager.JoinRequest
+	(*JoinResponse)(nil),   // 1: nodemanager.JoinResponse
+	(*PrepareMessage)(nil), // 2: nodemanager.PrepareMessage
+	(*PromiseMessage)(nil), // 3: nodemanager.PromiseMessage
+	(*AcceptMessage)(nil),  // 4: nodemanager.AcceptMessage
+	(*LearnMessage)(nil),   // 5: nodemanager.LearnMessage
+	(*CommitMessage)(nil),  // 6: nodemanager.CommitMessage
+	(*emptypb.Empty)(nil),  // 7: google.protobuf.Empty
+}
 var file_protos_nodemanager_nodemanager_proto_depIdxs = []int32{
 	0, // 0: nodemanager.NodeManagerService.Join:input_type -> nodemanager.JoinRequest
 	2, // 1: nodemanager.NodeManagerService.Prepare:input_type -> nodemanager.PrepareMessage

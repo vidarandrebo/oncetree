@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"log"
 	"sync"
-	"time"
 
 	"github.com/vidarandrebo/oncetree/concurrent/mutex"
+	"github.com/vidarandrebo/oncetree/consts"
 	"github.com/vidarandrebo/oncetree/nodemanager"
 
 	"github.com/relab/gorums"
@@ -72,7 +72,7 @@ func (kvss *KeyValueStorageService) sendGossip(originID string, key int64) {
 		if err != nil {
 			return
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
 		ctx.Done()
 		_, err = node.Gossip(ctx, &kvsprotos.GossipMessage{NodeID: kvss.id, Key: key, Value: value, Timestamp: ts})
 		kvss.logger.Println(err)

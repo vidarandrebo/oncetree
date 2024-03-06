@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/vidarandrebo/oncetree"
+	"github.com/vidarandrebo/oncetree/consts"
 	"github.com/vidarandrebo/oncetree/storage"
 
 	"google.golang.org/grpc/credentials/insecure"
@@ -158,7 +159,7 @@ func TestKeyValueStorage_WriteValue_NoChange(t *testing.T) {
 // TestKeyValueStorageService_Write tests writing the same value to all nodes, and checking that the values has propagated to all nodes.
 func TestKeyValueStorageService_Write(t *testing.T) {
 	testNodes, wg := oncetree.StartTestNodes()
-	time.Sleep(5 * time.Second)
+	time.Sleep(consts.GorumsDialTimeout)
 	cfg := createKeyValueStorageConfig()
 
 	for _, node := range cfg.Nodes() {
@@ -168,7 +169,7 @@ func TestKeyValueStorageService_Write(t *testing.T) {
 		})
 		assert.Nil(t, writeErr)
 	}
-	time.Sleep(1 * time.Second)
+	time.Sleep(consts.RPCContextTimeout)
 
 	responses, readErr := cfg.ReadAll(context.Background(), &kvsprotos.ReadRequest{
 		Key: 20,
@@ -190,7 +191,7 @@ func TestKeyValueStorageService_Write(t *testing.T) {
 // createKeyValueStorageConfig creates a new manager and returns an initialized configuration to use with the KeyValueStorageService
 func createKeyValueStorageConfig() *kvsprotos.Configuration {
 	manager := kvsprotos.NewManager(
-		gorums.WithDialTimeout(1*time.Second),
+		gorums.WithDialTimeout(consts.GorumsDialTimeout),
 		gorums.WithGrpcDialOptions(
 			grpc.WithBlock(),
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
