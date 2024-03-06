@@ -8,8 +8,8 @@ import (
 	"reflect"
 	"slices"
 	"sync"
-	"time"
 
+	"github.com/vidarandrebo/oncetree/consts"
 	"github.com/vidarandrebo/oncetree/eventbus"
 
 	"github.com/google/uuid"
@@ -178,7 +178,7 @@ func (nm *NodeManager) SendJoin(knownAddr string) {
 		nm.gorumsManager.Close()
 		knownNodeID, _ := uuid.NewV7()
 		nm.AddNeighbour(knownNodeID.String(), knownAddr, Tmp)
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
 		nodeMap := nm.TmpGorumsMap()
 		cfg, err := nm.gorumsManager.NewConfiguration(
 			&QSpec{NumNodes: len(nodeMap)},

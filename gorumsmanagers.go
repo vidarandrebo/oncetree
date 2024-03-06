@@ -1,13 +1,13 @@
 package oncetree
 
 import (
-	"time"
 
 	"github.com/relab/gorums"
 	fdprotos "github.com/vidarandrebo/oncetree/protos/failuredetector"
 	kvsprotos "github.com/vidarandrebo/oncetree/protos/keyvaluestorage"
 	"github.com/vidarandrebo/oncetree/protos/node"
 	nmprotos "github.com/vidarandrebo/oncetree/protos/nodemanager"
+	 "github.com/vidarandrebo/oncetree/consts"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -21,28 +21,28 @@ type GorumsManagers struct {
 
 func NewGorumsManagers() *GorumsManagers {
 	fdManager := fdprotos.NewManager(
-		gorums.WithDialTimeout(1*time.Second),
+		gorums.WithDialTimeout(consts.GorumsDialTimeout),
 		gorums.WithGrpcDialOptions(
 			grpc.WithBlock(),
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
 		),
 	)
 	kvsManager := kvsprotos.NewManager(
-		gorums.WithDialTimeout(1*time.Second),
+		gorums.WithDialTimeout(consts.GorumsDialTimeout),
 		gorums.WithGrpcDialOptions(
 			grpc.WithBlock(),
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
 		),
 	)
 	nmManager := nmprotos.NewManager(
-		gorums.WithDialTimeout(1*time.Second),
+		gorums.WithDialTimeout(consts.GorumsDialTimeout),
 		gorums.WithGrpcDialOptions(
 			grpc.WithBlock(),
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
 		),
 	)
 	nodeManager := node.NewManager(
-		gorums.WithDialTimeout(1*time.Second),
+		gorums.WithDialTimeout(consts.GorumsDialTimeout),
 		gorums.WithGrpcDialOptions(
 			grpc.WithBlock(),
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
