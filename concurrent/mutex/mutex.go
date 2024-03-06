@@ -1,4 +1,4 @@
-package oncetree
+package mutex
 
 import "sync"
 
@@ -8,7 +8,7 @@ type RWMutex[T any] struct {
 	value T
 }
 
-func NewRWMutex[T any](value T) *RWMutex[T] {
+func New[T any](value T) *RWMutex[T] {
 	return &RWMutex[T]{
 		value: value,
 	}

@@ -1,4 +1,4 @@
-package oncetree
+package maps
 
 import "sync"
 

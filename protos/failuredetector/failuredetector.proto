@@ -3,9 +3,9 @@ syntax = "proto3";
 import "gorums.proto";
 import "google/protobuf/empty.proto";
 
-package failuredetectorprotos;
+package failuredetector;
 
-option go_package = "github.com/vidarandrebo/oncetree/failuredetectorprotos";
+option go_package = "github.com/vidarandrebo/oncetree/failuredetector";
 
 message HeartbeatMessage { string NodeID = 1; }
 service FailureDetectorService {

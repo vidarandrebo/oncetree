@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+import "google/protobuf/empty.proto";
+
+package node;
+
+option go_package = "github.com/vidarandrebo/oncetree/node";
+
+service NodeService {
+  rpc Crash(google.protobuf.Empty) returns (google.protobuf.Empty) {}
+}

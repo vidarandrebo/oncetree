@@ -1,4 +1,4 @@
-package oncetree
+package storage
 
 import (
 	"context"
@@ -7,8 +7,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/vidarandrebo/oncetree/concurrent/mutex"
+	"github.com/vidarandrebo/oncetree/nodemanager"
+
 	"github.com/relab/gorums"
-	kvsprotos "github.com/vidarandrebo/oncetree/protos/keyvaluestorageprotos"
+	kvsprotos "github.com/vidarandrebo/oncetree/protos/keyvaluestorage"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
@@ -17,25 +20,25 @@ type KeyValueStorageService struct {
 	storage       KeyValueStorage
 	logger        *log.Logger
 	mut           sync.Mutex
-	timestamp     *RWMutex[int64]
+	timestamp     *mutex.RWMutex[int64]
 	gorumsConfig  *kvsprotos.Configuration
 	gorumsManager *kvsprotos.Manager
-	nodeManager   *NodeManager
+	nodeManager   *nodemanager.NodeManager
 }
 
-func NewKeyValueStorageService(id string, logger *log.Logger, nodeManager *NodeManager, gorumsManager *kvsprotos.Manager) *KeyValueStorageService {
+func NewKeyValueStorageService(id string, logger *log.Logger, nodeManager *nodemanager.NodeManager, gorumsManager *kvsprotos.Manager) *KeyValueStorageService {
 	return &KeyValueStorageService{
 		id:            id,
 		logger:        logger,
 		storage:       *NewKeyValueStorage(),
 		gorumsManager: gorumsManager,
 		nodeManager:   nodeManager,
-		timestamp:     NewRWMutex[int64](0),
+		timestamp:     mutex.New[int64](0),
 	}
 }
 
 func (kvss *KeyValueStorageService) SetNodesFromManager() error {
-	gorumsNeighbourMap := kvss.nodeManager.GetGorumsNeighbourMap()
+	gorumsNeighbourMap := kvss.nodeManager.GorumsNeighbourMap()
 	cfg, err := kvss.gorumsManager.NewConfiguration(
 		&QSpec{
 			NumNodes: len(gorumsNeighbourMap),
@@ -57,7 +60,7 @@ func (kvss *KeyValueStorageService) sendGossip(originID string, key int64) {
 	ts := *tsRef // make sure all messages has same ts
 	kvss.timestamp.Unlock(&tsRef)
 	for _, node := range kvss.gorumsConfig.Nodes() {
-		nodeID, err := kvss.nodeManager.resolveNodeIDFromAddress(node.Address())
+		nodeID, err := kvss.nodeManager.ResolveNodeIDFromAddress(node.Address())
 		if err != nil {
 			continue
 		}
@@ -207,4 +210,22 @@ func (kvs KeyValueStorage) WriteValue(nodeID string, key int64, value int64, tim
 	}
 	kvs[nodeID][key] = TimestampedValue{Value: value, Timestamp: timestamp}
 	return true
+}
+
+type QSpec struct {
+	NumNodes int
+}
+
+func (q *QSpec) ReadAllQF(in *kvsprotos.ReadRequest, replies map[uint32]*kvsprotos.ReadAllResponse) (*kvsprotos.ReadAllResponse, bool) {
+	if len(replies) < q.NumNodes {
+		return nil, false
+	}
+	values := make(map[string]int64)
+	// merges the response maps into one maps. The maps in each reply only contains one key-value pair, but this is needed to have the same response type for the individaul response and the quorum call.
+	for _, reply := range replies {
+		for id, value := range reply.Value {
+			values[id] = value
+		}
+	}
+	return &kvsprotos.ReadAllResponse{Value: values}, true
 }

@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+import "gorums.proto";
+import "google/protobuf/empty.proto";
+
+package nodemanager;
+
+option go_package = "github.com/vidarandrebo/oncetree/nodemanager";
+
+
+message JoinRequest {
+  string NodeID = 1;
+  string Address = 2;
+}
+message JoinResponse {
+  bool OK = 1;
+  string NodeID = 2;
+  string NextAddress = 3;
+}
+
+message PrepareMessage {string NodeID = 1;}
+message PromiseMessage {string NodeID = 1;}
+message AcceptMessage {
+  int64 Epoch = 1;
+  int64 Key = 2;
+  int64 Value = 3;
+}
+message LearnMessage {
+  int64 Epoch = 1;
+  int64 Key = 2;
+}
+message CommitMessage {
+  int64 Epoch = 1;
+  int64 Key = 2;
+}
+
+
+service NodeManagerService {
+  rpc Join(JoinRequest) returns (JoinResponse){}
+  rpc Prepare(PrepareMessage) returns (PromiseMessage) {
+    option (gorums.quorumcall) = true;
+  }
+  rpc Accept(AcceptMessage) returns (LearnMessage) {
+    option (gorums.quorumcall) = true;
+  }
+  rpc Commit(CommitMessage) returns (google.protobuf.Empty) {
+    option (gorums.multicast) = true;
+  }
+}

@@ -1,4 +1,4 @@
-package oncetree
+package hashset
 
 import "sync"
 
@@ -54,7 +54,7 @@ type ConcurrentHashSet[T comparable] struct {
 	mut     sync.RWMutex
 }
 
-func NewConcurrentHashSet[T comparable]() *ConcurrentHashSet[T] {
+func New[T comparable]() *ConcurrentHashSet[T] {
 	return &ConcurrentHashSet[T]{
 		hashSet: make(HashSet[T]),
 	}
