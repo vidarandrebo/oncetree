@@ -45,7 +45,7 @@ func New(id string, logger *log.Logger, nodeManager *nodemanager.NodeManager, go
 }
 
 func (fd *FailureDetector) SetNodesFromManager() error {
-	for _, neighbour := range fd.nodeManager.GetNeighbours() {
+	for _, neighbour := range fd.nodeManager.Neighbours() {
 		fd.nodes.Add(neighbour.Key)
 	}
 	cfg, err := fd.gorumsManager.NewConfiguration(
@@ -53,7 +53,7 @@ func (fd *FailureDetector) SetNodesFromManager() error {
 			numNodes: fd.nodes.Len(),
 		},
 		gorums.WithNodeMap(
-			fd.nodeManager.GetGorumsNeighbourMap(),
+			fd.nodeManager.GorumsNeighbourMap(),
 		),
 	)
 	if err != nil {

@@ -3,14 +3,13 @@ package oncetree
 import (
 	"context"
 	"fmt"
-	"github.com/google/uuid"
 	"log"
 	"net"
 	"os"
 	"reflect"
 	"sync"
-	"time"
 
+	"github.com/google/uuid"
 	"github.com/vidarandrebo/oncetree/eventbus"
 	"github.com/vidarandrebo/oncetree/failuredetector"
 	"github.com/vidarandrebo/oncetree/nodemanager"
@@ -43,9 +42,10 @@ func NewNode(id string, rpcAddr string) *Node {
 		id = uuid.New().String()
 	}
 	logger := log.New(os.Stderr, fmt.Sprintf("NodeID: %s ", id), log.Ltime|log.Lmsgprefix)
-	nodeManager := nodemanager.New(id, 2)
 	eventBus := eventbus.New(logger)
-	gorumsManagers := CreateGorumsManagers()
+	gorumsManagers := NewGorumsManagers()
+	nodeManager := nodemanager.New(id, rpcAddr, 2, logger, eventBus, gorumsManagers.nmManager)
+
 	return &Node{
 		rpcAddr: rpcAddr,
 		id:      id,
@@ -71,33 +71,15 @@ func NewNode(id string, rpcAddr string) *Node {
 	}
 }
 
-// setupGorumsConfigs sets up the initial gorums configurations for the various services
-func (n *Node) setupGorumsConfigs() {
-	tries := 0
-startTryCreateConfigs:
-	time.Sleep(time.Duration(tries))
-	tries++
-	if tries > 5 {
-		log.Panicln("could not create gorums configs")
-	}
-	fdSetupErr := n.failureDetector.SetNodesFromManager()
-	kvssSetupErr := n.keyValueStorageService.SetNodesFromManager()
-	if fdSetupErr != nil {
-		n.logger.Println(fdSetupErr)
-		goto startTryCreateConfigs
-	}
-	if kvssSetupErr != nil {
-		n.logger.Println(kvssSetupErr)
-		goto startTryCreateConfigs
-	}
-}
-
 func (n *Node) setupEventHandlers() {
-	n.eventbus.RegisterHandler(reflect.TypeOf(failuredetector.NodeFailedEvent{}), func(e any) {
-		if event, ok := e.(failuredetector.NodeFailedEvent); ok {
-			n.nodeFailedHandler(event)
-		}
-	})
+	n.eventbus.RegisterHandler(
+		reflect.TypeOf(failuredetector.NodeFailedEvent{}),
+		func(e any) {
+			if event, ok := e.(failuredetector.NodeFailedEvent); ok {
+				n.nodeFailedHandler(event)
+			}
+		},
+	)
 }
 
 func (n *Node) nodeFailedHandler(e failuredetector.NodeFailedEvent) {
@@ -125,18 +107,22 @@ func (n *Node) startGorumsServer(addr string) {
 }
 
 // Run starts the main loop of the node
-func (n *Node) Run() {
+func (n *Node) Run(knownAddr string) {
 	ctx, cancel := context.WithCancel(context.Background())
 	wg := sync.WaitGroup{}
 	defer cancel()
+
 	n.startGorumsServer(n.rpcAddr)
-	n.setupGorumsConfigs()
 	n.setupEventHandlers()
+	n.nodeManager.SendJoin(knownAddr)
+
 	wg.Add(1)
 	go n.failureDetector.Run(ctx, &wg)
 
+	wg.Add(1)
+	go n.eventbus.Run(ctx, &wg)
+
 	nodeExitMessage := ""
-	n.logger.Println("hello there")
 mainLoop:
 	for {
 		select {
@@ -188,6 +174,6 @@ func (n *Node) SetNeighboursFromNodeMap(nodeIDs []string, nodes map[string]strin
 		}
 
 	}
-	n.logger.Printf("parent: %v", n.nodeManager.GetParent())
-	n.logger.Printf("children: %v", n.nodeManager.GetChildren())
+	n.logger.Printf("parent: %v", n.nodeManager.Parent())
+	n.logger.Printf("children: %v", n.nodeManager.Children())
 }

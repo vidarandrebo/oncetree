@@ -38,7 +38,7 @@ func NewKeyValueStorageService(id string, logger *log.Logger, nodeManager *nodem
 }
 
 func (kvss *KeyValueStorageService) SetNodesFromManager() error {
-	gorumsNeighbourMap := kvss.nodeManager.GetGorumsNeighbourMap()
+	gorumsNeighbourMap := kvss.nodeManager.GorumsNeighbourMap()
 	cfg, err := kvss.gorumsManager.NewConfiguration(
 		&QSpec{
 			NumNodes: len(gorumsNeighbourMap),

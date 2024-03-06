@@ -158,7 +158,7 @@ func TestKeyValueStorage_WriteValue_NoChange(t *testing.T) {
 // TestKeyValueStorageService_Write tests writing the same value to all nodes, and checking that the values has propagated to all nodes.
 func TestKeyValueStorageService_Write(t *testing.T) {
 	testNodes, wg := oncetree.StartTestNodes()
-	time.Sleep(1 * time.Second)
+	time.Sleep(5 * time.Second)
 	cfg := createKeyValueStorageConfig()
 
 	for _, node := range cfg.Nodes() {

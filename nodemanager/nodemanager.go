@@ -4,11 +4,15 @@ import (
 	"cmp"
 	"context"
 	"fmt"
-	"github.com/google/uuid"
 	"log"
+	"reflect"
 	"slices"
 	"sync"
 	"time"
+
+	"github.com/vidarandrebo/oncetree/eventbus"
+
+	"github.com/google/uuid"
 
 	"github.com/vidarandrebo/oncetree/concurrent/maps"
 	"github.com/vidarandrebo/oncetree/concurrent/mutex"
@@ -27,31 +31,54 @@ type NodeManager struct {
 	lastJoinID    *mutex.RWMutex[string]
 	joinMut       sync.Mutex
 	logger        *log.Logger
+	eventBus      *eventbus.EventBus
 	gorumsManager *nmprotos.Manager
 	gorumsConfig  *nmprotos.Configuration
 }
 
-func New(id string, address string, fanout int, gorumsConfig *nmprotos.Configuration, gorumsManager *nmprotos.Manager) *NodeManager {
-	return &NodeManager{
+func New(id string, address string, fanout int, logger *log.Logger, eventBus *eventbus.EventBus, gorumsManager *nmprotos.Manager) *NodeManager {
+	nm := &NodeManager{
 		id:            id,
 		address:       address,
 		fanout:        fanout,
 		neighbours:    maps.NewConcurrentMap[string, *Neighbour](),
 		nextGorumsID:  mutex.New[uint32](0),
 		lastJoinID:    mutex.New[string](""),
+		logger:        logger,
+		eventBus:      eventBus,
 		gorumsManager: gorumsManager,
-		gorumsConfig:  gorumsConfig,
 	}
+	eventBus.RegisterHandler(reflect.TypeOf(NeighbourAddedEvent{}),
+		func(e any) {
+			if event, ok := e.(NeighbourAddedEvent); ok {
+				nm.HandleNeighbourAddedEvent(event)
+			}
+		})
+	eventBus.RegisterHandler(reflect.TypeOf(NeighbourRemovedEvent{}),
+		func(e any) {
+			if event, ok := e.(NeighbourRemovedEvent); ok {
+				nm.HandleNeighbourRemovedEvent(event)
+			}
+		})
+	return nm
 }
 
-func (nm *NodeManager) HandleFailure(nodeID string) {
+func (nm *NodeManager) HandleFailureEvent(nodeID string) {
 }
 
-func (nm *NodeManager) GetNeighbours() []maps.KeyValuePair[string, *Neighbour] {
+func (nm *NodeManager) HandleNeighbourAddedEvent(e NeighbourAddedEvent) {
+	nm.logger.Printf("added neighbour %s", e.NodeID)
+}
+
+func (nm *NodeManager) HandleNeighbourRemovedEvent(e NeighbourRemovedEvent) {
+	nm.logger.Printf("removed neighbour %s", e.NodeID)
+}
+
+func (nm *NodeManager) Neighbours() []maps.KeyValuePair[string, *Neighbour] {
 	return nm.neighbours.Entries()
 }
 
-func (nm *NodeManager) GetGorumsNeighbourMap() map[string]uint32 {
+func (nm *NodeManager) GorumsNeighbourMap() map[string]uint32 {
 	IDs := make(map[string]uint32)
 	for _, neighbour := range nm.neighbours.Values() {
 		IDs[neighbour.Address] = neighbour.GorumsID
@@ -66,13 +93,16 @@ func (nm *NodeManager) AddNeighbour(nodeID string, address string, role NodeRole
 	nm.nextGorumsID.Unlock(&nextID)
 	neighbour := NewNeighbour(nodeID, gorumsID, address, role)
 	nm.setNeighbour(nodeID, neighbour)
+	if role != Tmp {
+		nm.eventBus.Push(NewNeigbourAddedEvent(nodeID))
+	}
 }
 
 func (nm *NodeManager) setNeighbour(nodeID string, neighbour *Neighbour) {
 	nm.neighbours.Set(nodeID, neighbour)
 }
 
-func (nm *NodeManager) GetNeighbour(nodeID string) (*Neighbour, bool) {
+func (nm *NodeManager) Neighbour(nodeID string) (*Neighbour, bool) {
 	value, exists := nm.neighbours.Get(nodeID)
 	return value, exists
 }
@@ -91,6 +121,7 @@ func (nm *NodeManager) TmpGorumsMap() map[string]uint32 {
 	}
 	return gorumsMap
 }
+
 func (nm *NodeManager) clearTmp() {
 	for _, node := range nm.neighbours.Values() {
 		if node.Role == Tmp {
@@ -116,7 +147,7 @@ func (nm *NodeManager) ResolveNodeIDFromAddress(address string) (string, error) 
 	return "", fmt.Errorf("node with address %s not found", address)
 }
 
-func (nm *NodeManager) GetChildren() []*Neighbour {
+func (nm *NodeManager) Children() []*Neighbour {
 	children := make([]*Neighbour, 0)
 	for _, neighbour := range nm.neighbours.Values() {
 		if neighbour.Role == Child {
@@ -129,7 +160,7 @@ func (nm *NodeManager) GetChildren() []*Neighbour {
 	return children
 }
 
-func (nm *NodeManager) GetParent() *Neighbour {
+func (nm *NodeManager) Parent() *Neighbour {
 	for _, neighbour := range nm.neighbours.Values() {
 		if neighbour.Role == Parent {
 			return neighbour
@@ -139,14 +170,21 @@ func (nm *NodeManager) GetParent() *Neighbour {
 }
 
 func (nm *NodeManager) SendJoin(knownAddr string) {
+	if knownAddr == "" {
+		return
+	}
 	joined := false
 	for !joined {
 		nm.gorumsManager.Close()
 		knownNodeID, _ := uuid.NewV7()
 		nm.AddNeighbour(knownNodeID.String(), knownAddr, Tmp)
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		cfg, err := nm.gorumsManager.NewConfiguration(gorums.WithNodeMap(nm.TmpGorumsMap()))
+		nodeMap := nm.TmpGorumsMap()
+		cfg, err := nm.gorumsManager.NewConfiguration(
+			&QSpec{NumNodes: len(nodeMap)},
+			gorums.WithNodeMap(nodeMap))
 		if err != nil {
+			nm.logger.Println("send join, create gorums config")
 			nm.logger.Panicln(err)
 		}
 		nodes := cfg.Nodes()
@@ -174,7 +212,7 @@ func (nm *NodeManager) Join(ctx gorums.ServerCtx, request *nmprotos.JoinRequest)
 		NodeID:      nm.id,
 		NextAddress: "",
 	}
-	children := nm.GetChildren()
+	children := nm.Children()
 
 	// respond with one of the children's addresses if max fanout has been reached
 	if len(children) == nm.fanout {
@@ -196,7 +234,7 @@ func (nm *NodeManager) Join(ctx gorums.ServerCtx, request *nmprotos.JoinRequest)
 func (nm *NodeManager) NextJoinID() string {
 	lastJoinID := nm.lastJoinID.Lock()
 	defer nm.lastJoinID.Unlock(&lastJoinID)
-	children := nm.GetChildren()
+	children := nm.Children()
 	if len(children) == 0 {
 		nm.logger.Panicln("cannot call NextJoinID when node has no children")
 	}
