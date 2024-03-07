@@ -43,7 +43,7 @@ func New(id string, address string, fanout int, logger *log.Logger, eventBus *ev
 		fanout:        fanout,
 		neighbours:    maps.NewConcurrentMap[string, *Neighbour](),
 		nextGorumsID:  mutex.New[uint32](0),
-		lastJoinID:    mutex.New[string](""),
+		lastJoinID:    mutex.New(""),
 		logger:        logger,
 		eventBus:      eventBus,
 		gorumsManager: gorumsManager,
@@ -181,7 +181,7 @@ func (nm *NodeManager) SendJoin(knownAddr string) {
 		ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
 		nodeMap := nm.TmpGorumsMap()
 		cfg, err := nm.gorumsManager.NewConfiguration(
-			&QSpec{NumNodes: len(nodeMap)},
+			&qspec{NumNodes: len(nodeMap)},
 			gorums.WithNodeMap(nodeMap))
 		if err != nil {
 			nm.logger.Println("send join, create gorums config")
@@ -193,6 +193,10 @@ func (nm *NodeManager) SendJoin(knownAddr string) {
 			Address: nm.address,
 		}
 		response, err := nodes[0].Join(ctx, joinRequest)
+		if err != nil {
+			nm.logger.Println(err)
+			nm.logger.Fatalf("failed to join node with address %s", knownAddr)
+		}
 		if response.OK {
 			joined = true
 			nm.AddNeighbour(response.NodeID, knownAddr, Parent)
