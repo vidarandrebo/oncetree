@@ -1,11 +1,24 @@
 package hashset
 
-import "sync"
+import (
+	"fmt"
+	"strings"
+	"sync"
+)
 
 type HashSet[T comparable] map[T]struct{}
 
 func NewHashSet[T comparable]() HashSet[T] {
 	return make(HashSet[T])
+}
+
+func (s HashSet[T]) String() string {
+	valAsStrings := make([]string, 0)
+	values := s.Values()
+	for _, value := range values {
+		valAsStrings = append(valAsStrings, fmt.Sprintf("%v", value))
+	}
+	return strings.Join(valAsStrings, ", ")
 }
 
 func (s HashSet[T]) Add(key T) {
@@ -58,6 +71,12 @@ func New[T comparable]() *ConcurrentHashSet[T] {
 	return &ConcurrentHashSet[T]{
 		hashSet: make(HashSet[T]),
 	}
+}
+
+func (s *ConcurrentHashSet[T]) String() string {
+	s.mut.RLock()
+	defer s.mut.RUnlock()
+	return s.hashSet.String()
 }
 
 func (s *ConcurrentHashSet[T]) Len() int {

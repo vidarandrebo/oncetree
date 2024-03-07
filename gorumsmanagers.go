@@ -1,13 +1,12 @@
 package oncetree
 
 import (
-
 	"github.com/relab/gorums"
+	"github.com/vidarandrebo/oncetree/consts"
 	fdprotos "github.com/vidarandrebo/oncetree/protos/failuredetector"
 	kvsprotos "github.com/vidarandrebo/oncetree/protos/keyvaluestorage"
 	"github.com/vidarandrebo/oncetree/protos/node"
 	nmprotos "github.com/vidarandrebo/oncetree/protos/nodemanager"
-	 "github.com/vidarandrebo/oncetree/consts"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )

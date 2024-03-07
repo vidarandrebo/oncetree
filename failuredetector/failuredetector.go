@@ -3,6 +3,7 @@ package failuredetector
 import (
 	"context"
 	"log"
+	"reflect"
 	"sync"
 	"time"
 
@@ -23,7 +24,6 @@ type FailureDetector struct {
 	nodes         *hashset.ConcurrentHashSet[string]
 	alive         *maps.ConcurrentIntegerMap[string]
 	suspected     *hashset.ConcurrentHashSet[string]
-	delay         int
 	logger        *log.Logger
 	nodeManager   *nodemanager.NodeManager
 	gorumsConfig  *fdprotos.Configuration
@@ -32,7 +32,7 @@ type FailureDetector struct {
 }
 
 func New(id string, logger *log.Logger, nodeManager *nodemanager.NodeManager, gorumsManager *fdprotos.Manager, eventBus *eventbus.EventBus) *FailureDetector {
-	return &FailureDetector{
+	fd := &FailureDetector{
 		id:            id,
 		nodes:         hashset.New[string](),
 		alive:         maps.NewConcurrentIntegerMap[string](),
@@ -40,17 +40,29 @@ func New(id string, logger *log.Logger, nodeManager *nodemanager.NodeManager, go
 		nodeManager:   nodeManager,
 		gorumsManager: gorumsManager,
 		eventBus:      eventBus,
-		delay:         5,
 		logger:        logger,
 	}
+	eventBus.RegisterHandler(
+		reflect.TypeOf(nodemanager.NeighbourAddedEvent{}),
+		func(e any) {
+			if _, ok := e.(nodemanager.NeighbourAddedEvent); ok {
+				fd.SetNodesFromManager()
+				logger.Printf("fd tracking nodes %v", fd.nodes)
+			}
+		},
+	)
+	return fd
 }
 
 func (fd *FailureDetector) SetNodesFromManager() error {
+	fd.nodes.Clear()
+	fd.suspected.Clear()
+	fd.alive.Clear()
 	for _, neighbour := range fd.nodeManager.Neighbours() {
 		fd.nodes.Add(neighbour.Key)
 	}
 	cfg, err := fd.gorumsManager.NewConfiguration(
-		&qSpec{
+		&qspec{
 			numNodes: fd.nodes.Len(),
 		},
 		gorums.WithNodeMap(
@@ -78,11 +90,11 @@ func (fd *FailureDetector) Run(ctx context.Context, wg *sync.WaitGroup) {
 mainLoop:
 	for {
 		select {
-		case <-time.After(time.Duration(fd.delay) * time.Second):
+		case <-time.After(time.Duration(consts.FailureDetectorInterval) * time.Second):
 			fd.timeout()
 		case <-ctx.Done():
 			break mainLoop
-		case <-time.After(time.Second):
+		case <-time.After(consts.HeartbeatSendInterval):
 			fd.sendHeartbeat()
 		}
 	}
@@ -103,6 +115,7 @@ func (fd *FailureDetector) timeout() {
 }
 
 func (fd *FailureDetector) Heartbeat(ctx gorums.ServerCtx, request *fdprotos.HeartbeatMessage) {
+	// fd.logger.Printf("received hb from %s", request.GetNodeID())
 	fd.alive.Increment(request.GetNodeID(), 1)
 }
 
@@ -116,8 +129,4 @@ func (fd *FailureDetector) sendHeartbeat() {
 		defer cancel()
 		fd.gorumsConfig.Heartbeat(ctx, &msg)
 	}()
-}
-
-type qSpec struct {
-	numNodes int
 }
