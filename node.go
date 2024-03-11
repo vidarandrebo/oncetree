@@ -32,7 +32,7 @@ type Node struct {
 	logger                 *log.Logger
 	timestamp              int64
 	failureDetector        *failuredetector.FailureDetector
-	keyValueStorageService *storage.KeyValueStorageService
+	keyValueStorageService *storage.StorageService
 	eventbus               *eventbus.EventBus
 	stopChan               chan string
 }
@@ -56,11 +56,12 @@ func NewNode(id string, rpcAddr string) *Node {
 			gorumsManagers.fdManager,
 			eventBus,
 		),
-		keyValueStorageService: storage.NewKeyValueStorageService(
+		keyValueStorageService: storage.NewStorageService(
 			id,
 			logger,
 			nodeManager,
 			gorumsManagers.kvsManager,
+			eventBus,
 		),
 		eventbus:       eventBus,
 		nodeManager:    nodeManager,

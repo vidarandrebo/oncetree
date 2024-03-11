@@ -9,12 +9,8 @@ import (
 	"github.com/vidarandrebo/oncetree/consts"
 	"github.com/vidarandrebo/oncetree/storage"
 
-	"google.golang.org/grpc/credentials/insecure"
-
-	"github.com/relab/gorums"
 	"github.com/stretchr/testify/assert"
 	kvsprotos "github.com/vidarandrebo/oncetree/protos/keyvaluestorage"
-	"google.golang.org/grpc"
 )
 
 var (
@@ -156,7 +152,7 @@ func TestKeyValueStorage_WriteValue_NoChange(t *testing.T) {
 	assert.False(t, valueChanged)
 }
 
-// TestKeyValueStorageService_Write tests writing the same value to all nodes, and checking that the values has propagated to all nodes.
+// TestStorageService_Write tests writing the same value to all nodes, and checking that the values has propagated to all nodes.
 func TestKeyValueStorageService_Write(t *testing.T) {
 	testNodes, wg := oncetree.StartTestNodes()
 	time.Sleep(consts.GorumsDialTimeout)
@@ -186,20 +182,4 @@ func TestKeyValueStorageService_Write(t *testing.T) {
 		node.Stop("stopped by test")
 	}
 	wg.Wait()
-}
-
-// createKeyValueStorageConfig creates a new manager and returns an initialized configuration to use with the KeyValueStorageService
-func createKeyValueStorageConfig() *kvsprotos.Configuration {
-	manager := kvsprotos.NewManager(
-		gorums.WithDialTimeout(consts.GorumsDialTimeout),
-		gorums.WithGrpcDialOptions(
-			grpc.WithBlock(),
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
-		),
-	)
-	cfg, err := manager.NewConfiguration(&storage.QSpec{NumNodes: len(nodeAddrs)}, gorums.WithNodeList(nodeAddrs))
-	if err != nil {
-		panic("failed to create cfg")
-	}
-	return cfg
 }
