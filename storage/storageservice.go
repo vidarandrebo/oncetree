@@ -38,13 +38,13 @@ func NewStorageService(id string, logger *log.Logger, nodeManager *nodemanager.N
 		eventBus:      eventBus,
 	}
 	eventBus.RegisterHandler(reflect.TypeOf(nodemanager.NeighbourAddedEvent{}), func(e any) {
-		//	err := ss.SetNodesFromManager()
-		//	if err != nil {
-		//		ss.logger.Println(err)
-		//	}
-		//	if event, ok := e.(nodemanager.NeighbourAddedEvent); ok {
-		//		ss.shareAll(event.NodeID)
-		//	}
+		err := ss.SetNodesFromManager()
+		if err != nil {
+			ss.logger.Println(err)
+		}
+		if event, ok := e.(nodemanager.NeighbourAddedEvent); ok {
+			ss.shareAll(event.NodeID)
+		}
 	})
 	return ss
 }
@@ -67,6 +67,7 @@ func (ss *StorageService) SetNodesFromManager() error {
 }
 
 func (ss *StorageService) shareAll(nodeID string) {
+	ss.logger.Println("sharing all values")
 	tsRef := ss.timestamp.Lock()
 	*tsRef++     // increment before sending
 	ts := *tsRef // make sure all messages has same ts
@@ -113,7 +114,7 @@ func (ss *StorageService) sendGossip(originID string, key int64) {
 }
 
 func (ss *StorageService) Write(ctx gorums.ServerCtx, request *kvsprotos.WriteRequest) (response *emptypb.Empty, err error) {
-	ss.logger.Println("got writerequest")
+	ss.logger.Println("got write request")
 	ts := ss.timestamp.Lock()
 	*ts++
 	ss.storage.WriteValue(ss.id, request.GetKey(), request.GetValue(), *ts)

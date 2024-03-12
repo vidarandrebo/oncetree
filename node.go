@@ -24,17 +24,17 @@ import (
 )
 
 type Node struct {
-	id                     string
-	rpcAddr                string
-	gorumsServer           *gorums.Server
-	gorumsManagers         *GorumsManagers
-	nodeManager            *nodemanager.NodeManager
-	logger                 *log.Logger
-	timestamp              int64
-	failureDetector        *failuredetector.FailureDetector
-	keyValueStorageService *storage.StorageService
-	eventbus               *eventbus.EventBus
-	stopChan               chan string
+	id              string
+	rpcAddr         string
+	gorumsServer    *gorums.Server
+	gorumsManagers  *GorumsManagers
+	nodeManager     *nodemanager.NodeManager
+	logger          *log.Logger
+	timestamp       int64
+	failureDetector *failuredetector.FailureDetector
+	storageService  *storage.StorageService
+	eventbus        *eventbus.EventBus
+	stopChan        chan string
 }
 
 func NewNode(id string, rpcAddr string) *Node {
@@ -56,7 +56,7 @@ func NewNode(id string, rpcAddr string) *Node {
 			gorumsManagers.fdManager,
 			eventBus,
 		),
-		keyValueStorageService: storage.NewStorageService(
+		storageService: storage.NewStorageService(
 			id,
 			logger,
 			nodeManager,
@@ -91,7 +91,7 @@ func (n *Node) startGorumsServer(addr string) {
 	n.gorumsServer = gorums.NewServer()
 
 	fdprotos.RegisterFailureDetectorServiceServer(n.gorumsServer, n.failureDetector)
-	kvsprotos.RegisterKeyValueStorageServer(n.gorumsServer, n.keyValueStorageService)
+	kvsprotos.RegisterKeyValueStorageServer(n.gorumsServer, n.storageService)
 	nmprotos.RegisterNodeManagerServiceServer(n.gorumsServer, n.nodeManager)
 	node.RegisterNodeServiceServer(n.gorumsServer, n)
 

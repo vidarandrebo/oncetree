@@ -33,15 +33,15 @@ func (kvs KeyValueStorage) ReadValue(key int64) (int64, error) {
 }
 
 // ReadValueFromNode reads the stored value from a single node
-func (kvs KeyValueStorage) ReadValueFromNode(nodeAddr string, key int64) (int64, error) {
-	if nodeValues, containsNode := kvs[nodeAddr]; containsNode {
+func (kvs KeyValueStorage) ReadValueFromNode(nodeID string, key int64) (int64, error) {
+	if nodeValues, containsNode := kvs[nodeID]; containsNode {
 		if value, containsKey := nodeValues[key]; containsKey {
 			return value.Value, nil
 		} else {
 			return 0, fmt.Errorf("keyvaluestorage does not contain key %v", key)
 		}
 	} else {
-		return 0, fmt.Errorf("keyvaluestorage does not contain address %v", nodeAddr)
+		return 0, fmt.Errorf("keyvaluestorage does not contain address %v", nodeID)
 	}
 }
 

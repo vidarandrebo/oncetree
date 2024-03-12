@@ -31,7 +31,7 @@ func StartTestNodes() (map[string]*Node, *sync.WaitGroup) {
 			node.SetNeighboursFromNodeMap(nodeIDs, nodeMap)
 			nodes[id] = node
 			go func() {
-				err := node.keyValueStorageService.SetNodesFromManager()
+				err := node.storageService.SetNodesFromManager()
 				if err != nil {
 					log.Panicln(err)
 				}
