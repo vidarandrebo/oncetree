@@ -19,33 +19,24 @@ type GorumsManagers struct {
 }
 
 func NewGorumsManagers() *GorumsManagers {
-	fdManager := fdprotos.NewManager(
+	opts := []gorums.ManagerOption{
 		gorums.WithDialTimeout(consts.GorumsDialTimeout),
 		gorums.WithGrpcDialOptions(
 			grpc.WithBlock(),
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
 		),
+	}
+	fdManager := fdprotos.NewManager(
+		opts...
 	)
 	kvsManager := kvsprotos.NewManager(
-		gorums.WithDialTimeout(consts.GorumsDialTimeout),
-		gorums.WithGrpcDialOptions(
-			grpc.WithBlock(),
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
-		),
+		opts...
 	)
 	nmManager := nmprotos.NewManager(
-		gorums.WithDialTimeout(consts.GorumsDialTimeout),
-		gorums.WithGrpcDialOptions(
-			grpc.WithBlock(),
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
-		),
+		opts...
 	)
 	nodeManager := node.NewManager(
-		gorums.WithDialTimeout(consts.GorumsDialTimeout),
-		gorums.WithGrpcDialOptions(
-			grpc.WithBlock(),
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
-		),
+		opts...
 	)
 
 	return &GorumsManagers{

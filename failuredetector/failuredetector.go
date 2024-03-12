@@ -47,7 +47,7 @@ func New(id string, logger *log.Logger, nodeManager *nodemanager.NodeManager, go
 		func(e any) {
 			if _, ok := e.(nodemanager.NeighbourAddedEvent); ok {
 				fd.SetNodesFromManager()
-				logger.Printf("fd tracking nodes %v", fd.nodes)
+				// logger.Printf("fd tracking nodes %v", fd.nodes)
 			}
 		},
 	)
