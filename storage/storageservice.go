@@ -42,9 +42,9 @@ func NewStorageService(id string, logger *log.Logger, nodeManager *nodemanager.N
 		if err != nil {
 			ss.logger.Println(err)
 		}
-		if event, ok := e.(nodemanager.NeighbourAddedEvent); ok {
-			ss.shareAll(event.NodeID)
-		}
+		//if event, ok := e.(nodemanager.NeighbourAddedEvent); ok {
+		//	ss.shareAll(event.NodeID)
+		//}
 	})
 	return ss
 }
@@ -84,6 +84,8 @@ func (ss *StorageService) shareAll(nodeID string) {
 		ss.logger.Println(key)
 		ss.logger.Println(node)
 		ss.logger.Println(ts)
+		//TODO
+		// do gossip where the target is the except node as usual with gossip
 	}
 }
 
