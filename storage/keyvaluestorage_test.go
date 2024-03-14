@@ -1,36 +1,36 @@
-package storage_test
+package storage
 
 import (
 	"testing"
 
-	"github.com/vidarandrebo/oncetree/storage"
-
 	"github.com/stretchr/testify/assert"
 )
 
-var keyValueStorage = storage.KeyValueStorage{
-	"ID1": {
-		1: storage.TimestampedValue{Value: 12, Timestamp: 3},
-		2: storage.TimestampedValue{Value: 13, Timestamp: 3},
-		3: storage.TimestampedValue{Value: 14, Timestamp: 3},
-		5: storage.TimestampedValue{Value: 40, Timestamp: 3},
-	},
-	"ID2": {
-		1: storage.TimestampedValue{Value: 15, Timestamp: 3},
-		2: storage.TimestampedValue{Value: 16, Timestamp: 3},
-		3: storage.TimestampedValue{Value: 0, Timestamp: 3},
-		4: storage.TimestampedValue{Value: 77, Timestamp: 3},
-	},
-	"ID3": {
-		1: storage.TimestampedValue{Value: 44, Timestamp: 3},
-		2: storage.TimestampedValue{Value: 88, Timestamp: 3},
-		4: storage.TimestampedValue{Value: -77, Timestamp: 3},
-	},
-	"ID4": {
-		1: storage.TimestampedValue{Value: 15, Timestamp: 3},
-		2: storage.TimestampedValue{Value: 16, Timestamp: 3},
-		3: storage.TimestampedValue{Value: 0, Timestamp: 3},
-		4: storage.TimestampedValue{Value: 55, Timestamp: 3},
+var keyValueStorage = KeyValueStorage{
+	data: map[string]map[int64]TimestampedValue{
+		"ID1": {
+			1: TimestampedValue{Value: 12, Timestamp: 3},
+			2: TimestampedValue{Value: 13, Timestamp: 3},
+			3: TimestampedValue{Value: 14, Timestamp: 3},
+			5: TimestampedValue{Value: 40, Timestamp: 3},
+		},
+		"ID2": {
+			1: TimestampedValue{Value: 15, Timestamp: 3},
+			2: TimestampedValue{Value: 16, Timestamp: 3},
+			3: TimestampedValue{Value: 0, Timestamp: 3},
+			4: TimestampedValue{Value: 77, Timestamp: 3},
+		},
+		"ID3": {
+			1: TimestampedValue{Value: 44, Timestamp: 3},
+			2: TimestampedValue{Value: 88, Timestamp: 3},
+			4: TimestampedValue{Value: -77, Timestamp: 3},
+		},
+		"ID4": {
+			1: TimestampedValue{Value: 15, Timestamp: 3},
+			2: TimestampedValue{Value: 16, Timestamp: 3},
+			3: TimestampedValue{Value: 0, Timestamp: 3},
+			4: TimestampedValue{Value: 55, Timestamp: 3},
+		},
 	},
 }
 
@@ -95,7 +95,7 @@ func TestKeyValueStorage_WriteValue_NoAddr(t *testing.T) {
 	testKey := int64(1)
 	testValue := int64(10)
 	valueChanged := keyValueStorage.WriteValue(testID, testKey, testValue, 4)
-	assert.Equal(t, keyValueStorage[testID][testKey], storage.TimestampedValue{Value: testValue, Timestamp: 4})
+	assert.Equal(t, keyValueStorage.data[testID][testKey], TimestampedValue{Value: testValue, Timestamp: 4})
 	assert.True(t, valueChanged)
 }
 
@@ -104,7 +104,7 @@ func TestKeyValueStorage_WriteValue_OverWrite(t *testing.T) {
 	testKey := int64(2)
 	testValue := int64(15)
 	valueChanged := keyValueStorage.WriteValue(testID, testKey, testValue, 4)
-	assert.Equal(t, keyValueStorage[testID][testKey], storage.TimestampedValue{Value: testValue, Timestamp: 4})
+	assert.Equal(t, keyValueStorage.data[testID][testKey], TimestampedValue{Value: testValue, Timestamp: 4})
 	assert.True(t, valueChanged)
 }
 
@@ -115,6 +115,6 @@ func TestKeyValueStorage_WriteValue_NoChange(t *testing.T) {
 	testValue := int64(99)
 	testTs := int64(2)
 	valueChanged := keyValueStorage.WriteValue(testID, testKey, testValue, testTs)
-	assert.Equal(t, keyValueStorage[testID][testKey], storage.TimestampedValue{Value: 16, Timestamp: 3})
+	assert.Equal(t, keyValueStorage.data[testID][testKey], TimestampedValue{Value: 16, Timestamp: 3})
 	assert.False(t, valueChanged)
 }

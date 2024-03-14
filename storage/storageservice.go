@@ -19,7 +19,7 @@ type StorageService struct {
 	id            string
 	storage       KeyValueStorage
 	logger        *log.Logger
-	mut           sync.Mutex
+	storageMut    sync.Mutex
 	timestamp     *mutex.RWMutex[int64]
 	gorumsConfig  *kvsprotos.Configuration
 	gorumsManager *kvsprotos.Manager
@@ -89,14 +89,10 @@ func (ss *StorageService) shareAll(nodeID string) {
 	}
 }
 
-func (ss *StorageService) sendGossip(originID string, key int64) {
-	tsRef := ss.timestamp.Lock()
-	*tsRef++     // increment before sending
-	ts := *tsRef // make sure all messages has same ts
-	ss.timestamp.Unlock(&tsRef)
-	for _, node := range ss.gorumsConfig.Nodes() {
-		nodeID, err := ss.nodeManager.ResolveNodeIDFromAddress(node.Address())
-		if err != nil {
+func (ss *StorageService) sendGossip(originID string, key int64, ts int64) {
+	for _, gorumsNode := range ss.gorumsConfig.Nodes() {
+		nodeID, ok := ss.nodeManager.NodeID(gorumsNode.ID())
+		if !ok {
 			continue
 		}
 		// skip returning to originID and sending to self.
@@ -109,21 +105,26 @@ func (ss *StorageService) sendGossip(originID string, key int64) {
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
 		ctx.Done()
-		_, err = node.Gossip(ctx, &kvsprotos.GossipMessage{NodeID: ss.id, Key: key, Value: value, Timestamp: ts})
+		_, err = gorumsNode.Gossip(ctx, &kvsprotos.GossipMessage{NodeID: ss.id, Key: key, Value: value, Timestamp: ts})
 		ss.logger.Println(err)
 		cancel()
 	}
 }
 
 func (ss *StorageService) Write(ctx gorums.ServerCtx, request *kvsprotos.WriteRequest) (response *emptypb.Empty, err error) {
-	ss.logger.Println("got write request")
 	ts := ss.timestamp.Lock()
 	*ts++
-	ss.storage.WriteValue(ss.id, request.GetKey(), request.GetValue(), *ts)
+	writeTs := *ts
 	ss.timestamp.Unlock(&ts)
-	go func() {
-		ss.sendGossip(ss.id, request.GetKey())
-	}()
+	ss.storageMut.Lock()
+	ok := ss.storage.WriteValue(ss.id, request.GetKey(), request.GetValue(), writeTs)
+	ss.storageMut.Unlock()
+	if ok {
+		// only start gossip if write was successful
+		go ss.sendGossip(ss.id, request.GetKey(), writeTs)
+	} else {
+		ss.logger.Printf("write to key %v failed because existing value has higher timestamp", writeTs)
+	}
 	return &emptypb.Empty{}, nil
 }
 
@@ -144,19 +145,20 @@ func (ss *StorageService) ReadAll(ctx gorums.ServerCtx, request *kvsprotos.ReadR
 }
 
 func (ss *StorageService) PrintState(ctx gorums.ServerCtx, request *emptypb.Empty) (response *emptypb.Empty, err error) {
-	ss.logger.Println(ss.storage)
+	ss.logger.Println(ss.storage.data)
 	return &emptypb.Empty{}, nil
 }
 
 func (ss *StorageService) Gossip(ctx gorums.ServerCtx, request *kvsprotos.GossipMessage) (response *emptypb.Empty, err error) {
-	ss.logger.Printf("received gossip %v", request)
-	ss.mut.Lock()
+	ts := ss.timestamp.Lock()
+	*ts++
+	writeTs := *ts
+	ss.storageMut.Lock()
 	updated := ss.storage.WriteValue(request.GetNodeID(), request.GetKey(), request.GetValue(), request.GetTimestamp())
-	ss.mut.Unlock()
+	ss.storageMut.Unlock()
+	ss.timestamp.Unlock(&ts)
 	if updated {
-		go func() {
-			ss.sendGossip(request.NodeID, request.GetKey())
-		}()
+		go ss.sendGossip(request.NodeID, request.GetKey(), writeTs)
 	}
 	return &emptypb.Empty{}, nil
 }

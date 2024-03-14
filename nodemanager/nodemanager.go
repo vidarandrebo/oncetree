@@ -86,6 +86,25 @@ func (nm *NodeManager) GorumsNeighbourMap() map[string]uint32 {
 	return IDs
 }
 
+// GorumsID finds the gorumsID associated with the nodeID
+func (nm *NodeManager) GorumsID(nodeID string) (uint32, bool) {
+	node, ok := nm.neighbours.Get(nodeID)
+	if ok {
+		return node.GorumsID, true
+	}
+	return 0, false
+}
+
+// NodeID finds the nodeID associated with the gorumsID
+func (nm *NodeManager) NodeID(gorumsID uint32) (string, bool) {
+	for _, node := range nm.neighbours.Values() {
+		if node.GorumsID == gorumsID {
+			return node.ID, true
+		}
+	}
+	return "", false
+}
+
 func (nm *NodeManager) AddNeighbour(nodeID string, address string, role NodeRole) {
 	nextID := nm.nextGorumsID.Lock()
 	gorumsID := *nextID
