@@ -27,16 +27,16 @@ func NewGorumsManagers() *GorumsManagers {
 		),
 	}
 	fdManager := fdprotos.NewManager(
-		opts...
+		opts...,
 	)
 	kvsManager := kvsprotos.NewManager(
-		opts...
+		opts...,
 	)
 	nmManager := nmprotos.NewManager(
-		opts...
+		opts...,
 	)
 	nodeManager := node.NewManager(
-		opts...
+		opts...,
 	)
 
 	return &GorumsManagers{
