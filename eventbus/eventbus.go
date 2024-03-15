@@ -54,6 +54,7 @@ func (eb *EventBus) Push(event any) {
 
 func (eb *EventBus) eventHandlers(eventType reflect.Type) ([]func(any), error) {
 	eb.mut.RLock()
+	defer eb.mut.RUnlock()
 	handlers, ok := eb.handlers[eventType]
 	if !ok {
 		return nil, fmt.Errorf("no handlers for event of type %v", eventType)

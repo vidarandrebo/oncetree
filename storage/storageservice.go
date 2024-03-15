@@ -4,7 +4,6 @@ import (
 	"context"
 	"log"
 	"reflect"
-	"sync"
 
 	"github.com/relab/gorums"
 	"github.com/vidarandrebo/oncetree/concurrent/mutex"
@@ -19,7 +18,6 @@ type StorageService struct {
 	id            string
 	storage       KeyValueStorage
 	logger        *log.Logger
-	storageMut    sync.Mutex
 	timestamp     *mutex.RWMutex[int64]
 	gorumsConfig  *kvsprotos.Configuration
 	gorumsManager *kvsprotos.Manager
@@ -84,12 +82,12 @@ func (ss *StorageService) shareAll(nodeID string) {
 		ss.logger.Println(key)
 		ss.logger.Println(node)
 		ss.logger.Println(ts)
-		//TODO
+		// TODO
 		// do gossip where the target is the except node as usual with gossip
 	}
 }
 
-func (ss *StorageService) sendGossip(originID string, key int64, ts int64) {
+func (ss *StorageService) sendGossip(originID string, key int64, values map[string]int64, ts int64) {
 	for _, gorumsNode := range ss.gorumsConfig.Nodes() {
 		nodeID, ok := ss.nodeManager.NodeID(gorumsNode.ID())
 		if !ok {
@@ -99,13 +97,16 @@ func (ss *StorageService) sendGossip(originID string, key int64, ts int64) {
 		if nodeID == originID || nodeID == ss.id {
 			continue
 		}
-		value, err := ss.storage.ReadValueExceptNode(nodeID, key)
-		if err != nil {
-			return
-		}
+		// value, err := ss.storage.ReadValueExceptNode(nodeID, key)
 		ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
 		ctx.Done()
-		_, err = gorumsNode.Gossip(ctx, &kvsprotos.GossipMessage{NodeID: ss.id, Key: key, Value: value, Timestamp: ts})
+		_, err := gorumsNode.Gossip(ctx, &kvsprotos.GossipMessage{
+			NodeID:    ss.id,
+			Key:       key,
+			Value:     values[nodeID],
+			Timestamp: ts,
+		},
+		)
 		ss.logger.Println(err)
 		cancel()
 	}
@@ -115,13 +116,21 @@ func (ss *StorageService) Write(ctx gorums.ServerCtx, request *kvsprotos.WriteRe
 	ts := ss.timestamp.Lock()
 	*ts++
 	writeTs := *ts
-	ss.timestamp.Unlock(&ts)
-	ss.storageMut.Lock()
 	ok := ss.storage.WriteValue(ss.id, request.GetKey(), request.GetValue(), writeTs)
-	ss.storageMut.Unlock()
+	valuesToGossip, err := ss.storage.GetGossipValues(
+		request.GetKey(),
+		ss.nodeManager.NeighbourIDs(),
+	)
+	// both the write and read must happen while ts mutex is locked to avoid inconsistencies
+	ss.timestamp.Unlock(&ts)
+
+	if err != nil {
+		ss.logger.Println(err)
+		return &emptypb.Empty{}, nil
+	}
 	if ok {
 		// only start gossip if write was successful
-		go ss.sendGossip(ss.id, request.GetKey(), writeTs)
+		go ss.sendGossip(ss.id, request.GetKey(), valuesToGossip, writeTs)
 	} else {
 		ss.logger.Printf("write to key %v failed because existing value has higher timestamp", writeTs)
 	}
@@ -153,12 +162,21 @@ func (ss *StorageService) Gossip(ctx gorums.ServerCtx, request *kvsprotos.Gossip
 	ts := ss.timestamp.Lock()
 	*ts++
 	writeTs := *ts
-	ss.storageMut.Lock()
 	updated := ss.storage.WriteValue(request.GetNodeID(), request.GetKey(), request.GetValue(), request.GetTimestamp())
-	ss.storageMut.Unlock()
+	valuesToGossip, err := ss.storage.GetGossipValues(
+		request.GetKey(),
+		ss.nodeManager.NeighbourIDs(),
+	)
+	// both the write and read must happen while ts mutex is locked to avoid inconsistencies
 	ss.timestamp.Unlock(&ts)
+
+	if err != nil {
+		ss.logger.Println(err)
+		return &emptypb.Empty{}, nil
+	}
+
 	if updated {
-		go ss.sendGossip(request.NodeID, request.GetKey(), writeTs)
+		go ss.sendGossip(request.NodeID, request.GetKey(), valuesToGossip, writeTs)
 	}
 	return &emptypb.Empty{}, nil
 }

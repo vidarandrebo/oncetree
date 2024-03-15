@@ -78,6 +78,10 @@ func (nm *NodeManager) Neighbours() []maps.KeyValuePair[string, *Neighbour] {
 	return nm.neighbours.Entries()
 }
 
+func (nm *NodeManager) NeighbourIDs() []string {
+	return nm.neighbours.Keys()
+}
+
 func (nm *NodeManager) GorumsNeighbourMap() map[string]uint32 {
 	IDs := make(map[string]uint32)
 	for _, neighbour := range nm.neighbours.Values() {
