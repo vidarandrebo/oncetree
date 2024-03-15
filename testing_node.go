@@ -42,3 +42,14 @@ func StartTestNodes() (map[string]*Node, *sync.WaitGroup) {
 	}
 	return nodes, &wg
 }
+func StartTestNode() (*Node, *sync.WaitGroup) {
+	var wg sync.WaitGroup
+	id := "10"
+	wg.Add(1)
+	node := NewNode(id, ":9090")
+	go func() {
+		node.Run(":9080")
+		wg.Done()
+	}()
+	return node, &wg
+}

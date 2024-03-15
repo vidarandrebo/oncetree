@@ -15,3 +15,11 @@ type NeighbourRemovedEvent struct {
 func NewNeigbourRemovedEvent(nodeID string) NeighbourRemovedEvent {
 	return NeighbourRemovedEvent{NodeID: nodeID}
 }
+
+type NeighbourReadyEvent struct {
+	NodeID string
+}
+
+func NewNeighbourReadyEvent(nodeID string) NeighbourReadyEvent {
+	return NeighbourReadyEvent{NodeID: nodeID}
+}

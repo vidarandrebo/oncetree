@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"google.golang.org/protobuf/types/known/emptypb"
 	"log"
 	"reflect"
 	"slices"
@@ -210,12 +211,12 @@ func (nm *NodeManager) SendJoin(knownAddr string) {
 			nm.logger.Println("send join, create gorums config")
 			nm.logger.Panicln(err)
 		}
-		nodes := cfg.Nodes()
+		node := cfg.Nodes()[0]
 		joinRequest := &nmprotos.JoinRequest{
 			NodeID:  nm.id,
 			Address: nm.address,
 		}
-		response, err := nodes[0].Join(ctx, joinRequest)
+		response, err := node.Join(ctx, joinRequest)
 		if err != nil {
 			nm.logger.Println(err)
 			nm.logger.Fatalf("failed to join node with address %s", knownAddr)
@@ -226,9 +227,11 @@ func (nm *NodeManager) SendJoin(knownAddr string) {
 		} else {
 			knownAddr = response.NextAddress
 		}
+		//TODO send Ready
 		nm.clearTmp()
 		cancel()
 	}
+
 }
 
 func (nm *NodeManager) Join(ctx gorums.ServerCtx, request *nmprotos.JoinRequest) (response *nmprotos.JoinResponse, err error) {
@@ -281,6 +284,10 @@ func (nm *NodeManager) NextJoinID() string {
 	return *lastJoinID
 }
 
+func (nm *NodeManager) Ready(ctx gorums.ServerCtx, request *nmprotos.ReadyMessage) (response *emptypb.Empty, err error) {
+	nm.eventBus.Push(NewNeighbourReadyEvent(request.GetNodeID()))
+	return &emptypb.Empty{}, nil
+}
 func (nm *NodeManager) Prepare(ctx gorums.ServerCtx, request *nmprotos.PrepareMessage) (response *nmprotos.PromiseMessage, err error) {
 	// TODO implement me
 	panic("implement me")

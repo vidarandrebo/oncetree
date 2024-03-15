@@ -18,6 +18,8 @@ message JoinResponse {
   string NextAddress = 3;
 }
 
+message ReadyMessage {string NodeID = 1;}
+
 message PrepareMessage {string NodeID = 1;}
 message PromiseMessage {string NodeID = 1;}
 message AcceptMessage {
@@ -37,6 +39,7 @@ message CommitMessage {
 
 service NodeManagerService {
   rpc Join(JoinRequest) returns (JoinResponse){}
+  rpc Ready(ReadyMessage) returns (google.protobuf.Empty) {}
   rpc Prepare(PrepareMessage) returns (PromiseMessage) {
     option (gorums.quorumcall) = true;
   }

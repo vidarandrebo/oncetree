@@ -46,6 +46,30 @@ var (
 )
 
 // TestStorageService_Write tests writing the same value to all nodes, and checking that the values has propagated to all nodes.
+func TestStorageService_shareAll(t *testing.T) {
+	testNodes, wg := oncetree.StartTestNodes()
+	time.Sleep(consts.GorumsDialTimeout)
+	cfg := createKeyValueStorageConfig()
+
+	for _, node := range cfg.Nodes() {
+		_, writeErr := node.Write(context.Background(), &kvsprotos.WriteRequest{
+			Key:   20,
+			Value: 10,
+		})
+		assert.Nil(t, writeErr)
+	}
+	newNode, newWg := oncetree.StartTestNode()
+	time.Sleep(consts.RPCContextTimeout)
+
+	newNode.Stop("stopped by test")
+	for _, node := range testNodes {
+		node.Stop("stopped by test")
+	}
+	wg.Wait()
+	newWg.Wait()
+}
+
+// TestStorageService_Write tests writing the same value to all nodes, and checking that the values has propagated to all nodes.
 func TestStorageService_Write(t *testing.T) {
 	testNodes, wg := oncetree.StartTestNodes()
 	time.Sleep(consts.GorumsDialTimeout)

@@ -40,9 +40,11 @@ func NewStorageService(id string, logger *log.Logger, nodeManager *nodemanager.N
 		if err != nil {
 			ss.logger.Println(err)
 		}
-		//if event, ok := e.(nodemanager.NeighbourAddedEvent); ok {
-		//	ss.shareAll(event.NodeID)
-		//}
+	})
+	eventBus.RegisterHandler(reflect.TypeOf(nodemanager.NeighbourReadyEvent{}), func(e any) {
+		if event, ok := e.(nodemanager.NeighbourReadyEvent); ok {
+			ss.shareAll(event.NodeID)
+		}
 	})
 	return ss
 }
@@ -66,28 +68,50 @@ func (ss *StorageService) SetNodesFromManager() error {
 
 func (ss *StorageService) shareAll(nodeID string) {
 	ss.logger.Println("sharing all values")
-	tsRef := ss.timestamp.Lock()
-	*tsRef++     // increment before sending
-	ts := *tsRef // make sure all messages has same ts
-	ss.timestamp.Unlock(&tsRef)
 	neighbour, ok := ss.nodeManager.Neighbour(nodeID)
 	if !ok {
+		ss.logger.Printf("did not find neighbour %v", nodeID)
 		return
 	}
 	node, ok := ss.gorumsConfig.Node(neighbour.GorumsID)
 	if !ok {
+		ss.logger.Println(ss.gorumsConfig.Nodes())
+		for _, n := range ss.gorumsConfig.Nodes() {
+			ss.logger.Println(n.ID())
+		}
+		ss.logger.Printf("did not find node %d in gorums config", neighbour.GorumsID)
 		return
 	}
 	for _, key := range ss.storage.Keys().Values() {
-		ss.logger.Println(key)
-		ss.logger.Println(node)
-		ss.logger.Println(ts)
-		// TODO
-		// do gossip where the target is the except node as usual with gossip
+		tsRef := ss.timestamp.RLock()
+		ts := *tsRef
+		value, err := ss.storage.ReadValueExceptNode(nodeID, key)
+		ss.timestamp.RUnlock(&tsRef)
+		if err != nil {
+			ss.logger.Println(err)
+			continue
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
+		request := &kvsprotos.GossipMessage{
+			NodeID:    ss.id,
+			Key:       key,
+			Value:     value,
+			Timestamp: ts,
+		}
+		_, err = node.Gossip(ctx, request)
+		if err != nil {
+			ss.logger.Println(err)
+		}
+		cancel()
 	}
+	ss.logger.Printf("completed sharing values with node %v", nodeID)
 }
 
 func (ss *StorageService) sendGossip(originID string, key int64, values map[string]int64, ts int64) {
+	if ss.gorumsConfig == nil {
+		ss.logger.Println("hello")
+		ss.logger.Panicln("config is nil")
+	}
 	for _, gorumsNode := range ss.gorumsConfig.Nodes() {
 		nodeID, ok := ss.nodeManager.NodeID(gorumsNode.ID())
 		if !ok {
