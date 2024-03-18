@@ -238,9 +238,25 @@ func (n *Node) Join(ctx context.Context, in *JoinRequest) (resp *JoinResponse, e
 	return res.(*JoinResponse), err
 }
 
+// Ready is a quorum call invoked on all nodes in configuration c,
+// with the same argument in, and returns a combined result.
+func (n *Node) Ready(ctx context.Context, in *ReadyMessage) (resp *emptypb.Empty, err error) {
+	cd := gorums.CallData{
+		Message: in,
+		Method:  "nodemanager.NodeManagerService.Ready",
+	}
+
+	res, err := n.RawNode.RPCCall(ctx, cd)
+	if err != nil {
+		return nil, err
+	}
+	return res.(*emptypb.Empty), err
+}
+
 // NodeManagerService is the server-side API for the NodeManagerService Service
 type NodeManagerService interface {
 	Join(ctx gorums.ServerCtx, request *JoinRequest) (response *JoinResponse, err error)
+	Ready(ctx gorums.ServerCtx, request *ReadyMessage) (response *emptypb.Empty, err error)
 	Prepare(ctx gorums.ServerCtx, request *PrepareMessage) (response *PromiseMessage, err error)
 	Accept(ctx gorums.ServerCtx, request *AcceptMessage) (response *LearnMessage, err error)
 	Commit(ctx gorums.ServerCtx, request *CommitMessage)
@@ -251,6 +267,12 @@ func RegisterNodeManagerServiceServer(srv *gorums.Server, impl NodeManagerServic
 		req := in.Message.(*JoinRequest)
 		defer ctx.Release()
 		resp, err := impl.Join(ctx, req)
+		gorums.SendMessage(ctx, finished, gorums.WrapMessage(in.Metadata, resp, err))
+	})
+	srv.RegisterHandler("nodemanager.NodeManagerService.Ready", func(ctx gorums.ServerCtx, in *gorums.Message, finished chan<- *gorums.Message) {
+		req := in.Message.(*ReadyMessage)
+		defer ctx.Release()
+		resp, err := impl.Ready(ctx, req)
 		gorums.SendMessage(ctx, finished, gorums.WrapMessage(in.Metadata, resp, err))
 	})
 	srv.RegisterHandler("nodemanager.NodeManagerService.Prepare", func(ctx gorums.ServerCtx, in *gorums.Message, finished chan<- *gorums.Message) {

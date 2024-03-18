@@ -1,7 +1,6 @@
 package oncetree
 
 import (
-	"log"
 	"sync"
 )
 
@@ -26,19 +25,25 @@ func StartTestNodes() (map[string]*Node, *sync.WaitGroup) {
 	for _, id := range nodeIDs {
 		id := id
 		wg.Add(1)
+		node := NewNode(id, nodeMap[id])
+		nodes[id] = node
 		go func() {
-			node := NewNode(id, nodeMap[id])
-			node.SetNeighboursFromNodeMap(nodeIDs, nodeMap)
-			nodes[id] = node
-			go func() {
-				err := node.storageService.SetNodesFromManager()
-				if err != nil {
-					log.Panicln(err)
-				}
-			}()
-			node.Run("")
+			nodes[id].Run("")
 			wg.Done()
 		}()
+		go nodes[id].SetNeighboursFromNodeMap(nodeIDs, nodeMap)
 	}
 	return nodes, &wg
+}
+
+func StartTestNode() (*Node, *sync.WaitGroup) {
+	var wg sync.WaitGroup
+	id := "10"
+	wg.Add(1)
+	node := NewNode(id, ":9090")
+	go func() {
+		node.Run(":9080")
+		wg.Done()
+	}()
+	return node, &wg
 }

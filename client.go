@@ -6,7 +6,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/vidarandrebo/oncetree/storage"
+	"github.com/vidarandrebo/oncetree/storage/sqspec"
 
 	"github.com/relab/gorums"
 	kvsprotos "github.com/vidarandrebo/oncetree/protos/keyvaluestorage"
@@ -28,7 +28,7 @@ func NewClient(nodes []string) *Client {
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
 		),
 	)
-	cfg, err := manager.NewConfiguration(&storage.QSpec{NumNodes: len(nodes)}, gorums.WithNodeList(nodes))
+	cfg, err := manager.NewConfiguration(&sqspec.QSpec{NumNodes: len(nodes)}, gorums.WithNodeList(nodes))
 	if err != nil {
 		log.Fatalln("failed to create gorums client gorumsConfig")
 	}

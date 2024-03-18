@@ -9,6 +9,9 @@ import (
 	"slices"
 	"sync"
 
+	"github.com/vidarandrebo/oncetree/gorumsprovider"
+	"google.golang.org/protobuf/types/known/emptypb"
+
 	"github.com/vidarandrebo/oncetree/consts"
 	"github.com/vidarandrebo/oncetree/eventbus"
 
@@ -22,31 +25,30 @@ import (
 )
 
 type NodeManager struct {
-	id            string
-	address       string
-	fanout        int
-	neighbours    *maps.ConcurrentMap[string, *Neighbour]
-	epoch         int64
-	nextGorumsID  *mutex.RWMutex[uint32]
-	lastJoinID    *mutex.RWMutex[string]
-	joinMut       sync.Mutex
-	logger        *log.Logger
-	eventBus      *eventbus.EventBus
-	gorumsManager *nmprotos.Manager
-	gorumsConfig  *nmprotos.Configuration
+	id             string
+	address        string
+	fanout         int
+	neighbours     *maps.ConcurrentMap[string, *Neighbour]
+	epoch          int64
+	nextGorumsID   *mutex.RWMutex[uint32]
+	lastJoinID     *mutex.RWMutex[string]
+	joinMut        sync.Mutex
+	logger         *log.Logger
+	eventBus       *eventbus.EventBus
+	gorumsProvider *gorumsprovider.GorumsProvider
 }
 
-func New(id string, address string, fanout int, logger *log.Logger, eventBus *eventbus.EventBus, gorumsManager *nmprotos.Manager) *NodeManager {
+func New(id string, address string, fanout int, logger *log.Logger, eventBus *eventbus.EventBus, gorumsProvider *gorumsprovider.GorumsProvider) *NodeManager {
 	nm := &NodeManager{
-		id:            id,
-		address:       address,
-		fanout:        fanout,
-		neighbours:    maps.NewConcurrentMap[string, *Neighbour](),
-		nextGorumsID:  mutex.New[uint32](0),
-		lastJoinID:    mutex.New(""),
-		logger:        logger,
-		eventBus:      eventBus,
-		gorumsManager: gorumsManager,
+		id:             id,
+		address:        address,
+		fanout:         fanout,
+		neighbours:     maps.NewConcurrentMap[string, *Neighbour](),
+		nextGorumsID:   mutex.New[uint32](0),
+		lastJoinID:     mutex.New(""),
+		logger:         logger,
+		eventBus:       eventBus,
+		gorumsProvider: gorumsProvider,
 	}
 	eventBus.RegisterHandler(reflect.TypeOf(NeighbourAddedEvent{}),
 		func(e any) {
@@ -67,11 +69,11 @@ func (nm *NodeManager) HandleFailureEvent(nodeID string) {
 }
 
 func (nm *NodeManager) HandleNeighbourAddedEvent(e NeighbourAddedEvent) {
-	nm.logger.Printf("added neighbour %s", e.NodeID)
+	nm.logger.Printf("[NodeManager] - added neighbour %s", e.NodeID)
 }
 
 func (nm *NodeManager) HandleNeighbourRemovedEvent(e NeighbourRemovedEvent) {
-	nm.logger.Printf("removed neighbour %s", e.NodeID)
+	nm.logger.Printf("[NodeManager] - removed neighbour %s", e.NodeID)
 }
 
 func (nm *NodeManager) Neighbours() []maps.KeyValuePair[string, *Neighbour] {
@@ -116,6 +118,7 @@ func (nm *NodeManager) AddNeighbour(nodeID string, address string, role NodeRole
 	nm.nextGorumsID.Unlock(&nextID)
 	neighbour := NewNeighbour(nodeID, gorumsID, address, role)
 	nm.setNeighbour(nodeID, neighbour)
+	nm.gorumsProvider.SetNodes(nm.GorumsNeighbourMap())
 	if role != Tmp {
 		nm.eventBus.Push(NewNeigbourAddedEvent(nodeID))
 	}
@@ -167,7 +170,7 @@ func (nm *NodeManager) ResolveNodeIDFromAddress(address string) (string, error) 
 			return neighbour.Key, nil
 		}
 	}
-	return "", fmt.Errorf("node with address %s not found", address)
+	return "", fmt.Errorf("[NodeManager] - node with address %s not found", address)
 }
 
 func (nm *NodeManager) Children() []*Neighbour {
@@ -198,36 +201,51 @@ func (nm *NodeManager) SendJoin(knownAddr string) {
 	}
 	joined := false
 	for !joined {
-		nm.gorumsManager.Close()
 		knownNodeID, _ := uuid.NewV7()
 		nm.AddNeighbour(knownNodeID.String(), knownAddr, Tmp)
 		ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
-		nodeMap := nm.TmpGorumsMap()
-		cfg, err := nm.gorumsManager.NewConfiguration(
-			&qspec{NumNodes: len(nodeMap)},
-			gorums.WithNodeMap(nodeMap))
-		if err != nil {
-			nm.logger.Println("send join, create gorums config")
-			nm.logger.Panicln(err)
-		}
-		nodes := cfg.Nodes()
+		nm.gorumsProvider.SetNodes(nm.TmpGorumsMap())
+		cfg := nm.gorumsProvider.NodeManagerConfig()
+
+		node := cfg.Nodes()[0]
 		joinRequest := &nmprotos.JoinRequest{
 			NodeID:  nm.id,
 			Address: nm.address,
 		}
-		response, err := nodes[0].Join(ctx, joinRequest)
+		response, err := node.Join(ctx, joinRequest)
 		if err != nil {
 			nm.logger.Println(err)
-			nm.logger.Fatalf("failed to join node with address %s", knownAddr)
+			nm.logger.Fatalf("[NodeManager] - failed to join node with address %s", knownAddr)
 		}
+
+		nm.clearTmp()
+		nm.gorumsProvider.Reset()
+
 		if response.OK {
 			joined = true
 			nm.AddNeighbour(response.NodeID, knownAddr, Parent)
+			nm.SendReady(response.NodeID)
 		} else {
 			knownAddr = response.NextAddress
 		}
-		nm.clearTmp()
 		cancel()
+	}
+}
+
+func (nm *NodeManager) SendReady(nodeID string) {
+	cfg := nm.gorumsProvider.NodeManagerConfig()
+	ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
+	defer cancel()
+
+	gorumsID, ok := nm.GorumsID(nodeID)
+	if !ok {
+		nm.logger.Printf("[NodeManager] - could not find gorums node with id %s", nodeID)
+	}
+	node, ok := cfg.Node(gorumsID)
+	_, err := node.Ready(ctx, &nmprotos.ReadyMessage{NodeID: nm.id})
+	if err != nil {
+		nm.logger.Println(err)
+		nm.logger.Printf("[NodeManager] - failed to send ready message")
 	}
 }
 
@@ -263,7 +281,7 @@ func (nm *NodeManager) NextJoinID() string {
 	defer nm.lastJoinID.Unlock(&lastJoinID)
 	children := nm.Children()
 	if len(children) == 0 {
-		nm.logger.Panicln("cannot call NextJoinID when node has no children")
+		nm.logger.Panicln("[NodeManager] - cannot call NextJoinID when node has no children")
 	}
 	lastJoinPathIndex := 0
 	for i, child := range children {
@@ -279,6 +297,11 @@ func (nm *NodeManager) NextJoinID() string {
 	// increment last join path, then return
 	*lastJoinID = children[lastJoinPathIndex+1].ID
 	return *lastJoinID
+}
+
+func (nm *NodeManager) Ready(ctx gorums.ServerCtx, request *nmprotos.ReadyMessage) (response *emptypb.Empty, err error) {
+	nm.eventBus.Push(NewNeighbourReadyEvent(request.GetNodeID()))
+	return &emptypb.Empty{}, nil
 }
 
 func (nm *NodeManager) Prepare(ctx gorums.ServerCtx, request *nmprotos.PrepareMessage) (response *nmprotos.PromiseMessage, err error) {

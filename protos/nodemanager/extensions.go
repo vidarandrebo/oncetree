@@ -1,4 +1,4 @@
-package keyvaluestorage
+package nodemanager
 
 func (c *Configuration) Node(id uint32) (*Node, bool) {
 	for _, node := range c.Nodes() {
