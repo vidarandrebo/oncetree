@@ -5,6 +5,8 @@ import (
 	"log"
 	"reflect"
 
+	"github.com/vidarandrebo/oncetree/gorumsprovider"
+
 	"github.com/relab/gorums"
 	"github.com/vidarandrebo/oncetree/concurrent/mutex"
 	"github.com/vidarandrebo/oncetree/consts"
@@ -15,32 +17,27 @@ import (
 )
 
 type StorageService struct {
-	id            string
-	storage       KeyValueStorage
-	logger        *log.Logger
-	timestamp     *mutex.RWMutex[int64]
-	gorumsConfig  *kvsprotos.Configuration
-	gorumsManager *kvsprotos.Manager
-	nodeManager   *nodemanager.NodeManager
-	eventBus      *eventbus.EventBus
+	id             string
+	storage        KeyValueStorage
+	logger         *log.Logger
+	timestamp      *mutex.RWMutex[int64]
+	nodeManager    *nodemanager.NodeManager
+	eventBus       *eventbus.EventBus
+	gorumsProvider *gorumsprovider.GorumsProvider
 }
 
-func NewStorageService(id string, logger *log.Logger, nodeManager *nodemanager.NodeManager, gorumsManager *kvsprotos.Manager, eventBus *eventbus.EventBus) *StorageService {
+func NewStorageService(id string, logger *log.Logger, nodeManager *nodemanager.NodeManager, eventBus *eventbus.EventBus, gorumsProvider *gorumsprovider.GorumsProvider) *StorageService {
 	ss := &StorageService{
-		id:            id,
-		logger:        logger,
-		storage:       *NewKeyValueStorage(),
-		gorumsManager: gorumsManager,
-		nodeManager:   nodeManager,
-		timestamp:     mutex.New[int64](0),
-		eventBus:      eventBus,
+		id:             id,
+		logger:         logger,
+		storage:        *NewKeyValueStorage(),
+		nodeManager:    nodeManager,
+		timestamp:      mutex.New[int64](0),
+		eventBus:       eventBus,
+		gorumsProvider: gorumsProvider,
 	}
-	eventBus.RegisterHandler(reflect.TypeOf(nodemanager.NeighbourAddedEvent{}), func(e any) {
-		err := ss.SetNodesFromManager()
-		if err != nil {
-			ss.logger.Println(err)
-		}
-	})
+	//	eventBus.RegisterHandler(reflect.TypeOf(nodemanager.NeighbourAddedEvent{}), func(e any) {
+	//	})
 	eventBus.RegisterHandler(reflect.TypeOf(nodemanager.NeighbourReadyEvent{}), func(e any) {
 		if event, ok := e.(nodemanager.NeighbourReadyEvent); ok {
 			ss.shareAll(event.NodeID)
@@ -49,37 +46,21 @@ func NewStorageService(id string, logger *log.Logger, nodeManager *nodemanager.N
 	return ss
 }
 
-func (ss *StorageService) SetNodesFromManager() error {
-	gorumsNeighbourMap := ss.nodeManager.GorumsNeighbourMap()
-	cfg, err := ss.gorumsManager.NewConfiguration(
-		&QSpec{
-			NumNodes: len(gorumsNeighbourMap),
-		},
-		gorums.WithNodeMap(
-			gorumsNeighbourMap,
-		),
-	)
-	if err != nil {
-		return err
-	}
-	ss.gorumsConfig = cfg
-	return nil
-}
-
 func (ss *StorageService) shareAll(nodeID string) {
-	ss.logger.Println("sharing all values")
+	ss.logger.Printf("[StorageService] - sharing all values with %s", nodeID)
 	neighbour, ok := ss.nodeManager.Neighbour(nodeID)
 	if !ok {
-		ss.logger.Printf("did not find neighbour %v", nodeID)
+		ss.logger.Printf("[StorageService] - did not find neighbour %v", nodeID)
 		return
 	}
-	node, ok := ss.gorumsConfig.Node(neighbour.GorumsID)
+	gorumsConfig := ss.gorumsProvider.StorageConfig()
+	node, ok := gorumsConfig.Node(neighbour.GorumsID)
 	if !ok {
-		ss.logger.Println(ss.gorumsConfig.Nodes())
-		for _, n := range ss.gorumsConfig.Nodes() {
+		ss.logger.Println(gorumsConfig.Nodes())
+		for _, n := range gorumsConfig.Nodes() {
 			ss.logger.Println(n.ID())
 		}
-		ss.logger.Printf("did not find node %d in gorums config", neighbour.GorumsID)
+		ss.logger.Printf("[StorageService] - did not find node %d in gorums config", neighbour.GorumsID)
 		return
 	}
 	for _, key := range ss.storage.Keys().Values() {
@@ -104,15 +85,12 @@ func (ss *StorageService) shareAll(nodeID string) {
 		}
 		cancel()
 	}
-	ss.logger.Printf("completed sharing values with node %v", nodeID)
+	ss.logger.Printf("[StorageService] - completed sharing values with node %v", nodeID)
 }
 
 func (ss *StorageService) sendGossip(originID string, key int64, values map[string]int64, ts int64) {
-	if ss.gorumsConfig == nil {
-		ss.logger.Println("hello")
-		ss.logger.Panicln("config is nil")
-	}
-	for _, gorumsNode := range ss.gorumsConfig.Nodes() {
+	gorumsConfig := ss.gorumsProvider.StorageConfig()
+	for _, gorumsNode := range gorumsConfig.Nodes() {
 		nodeID, ok := ss.nodeManager.NodeID(gorumsNode.ID())
 		if !ok {
 			continue

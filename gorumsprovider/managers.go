@@ -1,4 +1,4 @@
-package oncetree
+package gorumsprovider
 
 import (
 	"github.com/relab/gorums"
@@ -11,14 +11,14 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-type GorumsManagers struct {
+type manangers struct {
 	fdManager   *fdprotos.Manager
 	kvsManager  *kvsprotos.Manager
 	nmManager   *nmprotos.Manager
 	nodeManager *node.Manager
 }
 
-func NewGorumsManagers() *GorumsManagers {
+func newGorumsManagers() *manangers {
 	opts := []gorums.ManagerOption{
 		gorums.WithDialTimeout(consts.GorumsDialTimeout),
 		gorums.WithGrpcDialOptions(
@@ -39,10 +39,18 @@ func NewGorumsManagers() *GorumsManagers {
 		opts...,
 	)
 
-	return &GorumsManagers{
+	return &manangers{
 		fdManager:   fdManager,
 		kvsManager:  kvsManager,
 		nmManager:   nmManager,
 		nodeManager: nodeManager,
 	}
+}
+
+func (m *manangers) recreate() *manangers {
+	m.fdManager.Close()
+	m.nmManager.Close()
+	m.kvsManager.Close()
+	m.nodeManager.Close()
+	return newGorumsManagers()
 }

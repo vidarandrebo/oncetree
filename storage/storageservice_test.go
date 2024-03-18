@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/vidarandrebo/oncetree/storage/sqspec"
+
 	"github.com/vidarandrebo/oncetree"
 	"github.com/vidarandrebo/oncetree/consts"
-	"github.com/vidarandrebo/oncetree/storage"
-
 	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/relab/gorums"
@@ -110,7 +110,7 @@ func createKeyValueStorageConfig() *kvsprotos.Configuration {
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
 		),
 	)
-	cfg, err := manager.NewConfiguration(&storage.QSpec{NumNodes: len(nodeAddrs)}, gorums.WithNodeList(nodeAddrs))
+	cfg, err := manager.NewConfiguration(&sqspec.QSpec{NumNodes: len(nodeAddrs)}, gorums.WithNodeList(nodeAddrs))
 	if err != nil {
 		panic("failed to create cfg")
 	}

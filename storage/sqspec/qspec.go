@@ -1,4 +1,4 @@
-package storage
+package sqspec
 
 import kvsprotos "github.com/vidarandrebo/oncetree/protos/keyvaluestorage"
 
