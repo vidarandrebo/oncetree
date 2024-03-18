@@ -11,14 +11,14 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-type manangers struct {
+type managers struct {
 	fdManager   *fdprotos.Manager
 	kvsManager  *kvsprotos.Manager
 	nmManager   *nmprotos.Manager
 	nodeManager *node.Manager
 }
 
-func newGorumsManagers() *manangers {
+func newGorumsManagers() *managers {
 	opts := []gorums.ManagerOption{
 		gorums.WithDialTimeout(consts.GorumsDialTimeout),
 		gorums.WithGrpcDialOptions(
@@ -39,7 +39,7 @@ func newGorumsManagers() *manangers {
 		opts...,
 	)
 
-	return &manangers{
+	return &managers{
 		fdManager:   fdManager,
 		kvsManager:  kvsManager,
 		nmManager:   nmManager,
@@ -47,7 +47,7 @@ func newGorumsManagers() *manangers {
 	}
 }
 
-func (m *manangers) recreate() *manangers {
+func (m *managers) recreate() *managers {
 	m.fdManager.Close()
 	m.nmManager.Close()
 	m.kvsManager.Close()

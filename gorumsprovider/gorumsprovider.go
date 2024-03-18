@@ -16,7 +16,7 @@ import (
 
 // GorumsProvider manages gorums managers and provides gorums configs
 type GorumsProvider struct {
-	managers       *manangers
+	managers       *managers
 	configurations *configurations
 	mut            sync.RWMutex
 	logger         *log.Logger
