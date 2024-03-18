@@ -49,7 +49,7 @@ var (
 func TestStorageService_shareAll(t *testing.T) {
 	testNodes, wg := oncetree.StartTestNodes()
 	time.Sleep(consts.GorumsDialTimeout)
-	cfg := createKeyValueStorageConfig()
+	mgr, cfg := createKeyValueStorageConfig()
 
 	for _, node := range cfg.Nodes() {
 		_, writeErr := node.Write(context.Background(), &kvsprotos.WriteRequest{
@@ -60,6 +60,25 @@ func TestStorageService_shareAll(t *testing.T) {
 	}
 	newNode, newWg := oncetree.StartTestNode()
 	time.Sleep(consts.RPCContextTimeout)
+
+	// add the new node to config
+	cfg, err := mgr.NewConfiguration(
+		&sqspec.QSpec{NumNodes: len(nodeAddrs) + 1},
+		cfg.WithNewNodes(gorums.WithNodeList([]string{":9090"})),
+	)
+	assert.Nil(t, err)
+
+	responses, readErr := cfg.ReadAll(context.Background(), &kvsprotos.ReadRequest{
+		Key: 20,
+	})
+
+	// should be as many responses as number of nodes
+	assert.Equal(t, len(testNodes)+1, len(responses.GetValue()))
+	assert.Nil(t, readErr)
+	// checks that all nodes including the new has the value 100 for key 20
+	for _, response := range responses.GetValue() {
+		assert.Equal(t, int64(100), response)
+	}
 
 	newNode.Stop("stopped by test")
 	for _, node := range testNodes {
@@ -73,7 +92,7 @@ func TestStorageService_shareAll(t *testing.T) {
 func TestStorageService_Write(t *testing.T) {
 	testNodes, wg := oncetree.StartTestNodes()
 	time.Sleep(consts.GorumsDialTimeout)
-	cfg := createKeyValueStorageConfig()
+	_, cfg := createKeyValueStorageConfig()
 
 	for _, node := range cfg.Nodes() {
 		_, writeErr := node.Write(context.Background(), &kvsprotos.WriteRequest{
@@ -102,7 +121,7 @@ func TestStorageService_Write(t *testing.T) {
 }
 
 // createKeyValueStorageConfig creates a new manager and returns an initialized configuration to use with the StorageService
-func createKeyValueStorageConfig() *kvsprotos.Configuration {
+func createKeyValueStorageConfig() (*kvsprotos.Manager, *kvsprotos.Configuration) {
 	manager := kvsprotos.NewManager(
 		gorums.WithDialTimeout(consts.GorumsDialTimeout),
 		gorums.WithGrpcDialOptions(
@@ -114,5 +133,5 @@ func createKeyValueStorageConfig() *kvsprotos.Configuration {
 	if err != nil {
 		panic("failed to create cfg")
 	}
-	return cfg
+	return manager, cfg
 }
