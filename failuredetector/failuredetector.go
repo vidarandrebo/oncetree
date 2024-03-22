@@ -29,10 +29,10 @@ type FailureDetector struct {
 	logger         *log.Logger
 	nodeManager    *nodemanager.NodeManager
 	eventBus       *eventbus.EventBus
-	gorumsProvider *gorumsprovider.GorumsProvider
+	configProvider gorumsprovider.FDConfigProvider
 }
 
-func New(id string, logger *log.Logger, nodeManager *nodemanager.NodeManager, eventBus *eventbus.EventBus, gorumsProvider *gorumsprovider.GorumsProvider) *FailureDetector {
+func New(id string, logger *log.Logger, nodeManager *nodemanager.NodeManager, eventBus *eventbus.EventBus, configProvider gorumsprovider.FDConfigProvider) *FailureDetector {
 	fd := &FailureDetector{
 		id:             id,
 		nodes:          hashset.New[string](),
@@ -41,7 +41,7 @@ func New(id string, logger *log.Logger, nodeManager *nodemanager.NodeManager, ev
 		nodeManager:    nodeManager,
 		eventBus:       eventBus,
 		logger:         logger,
-		gorumsProvider: gorumsProvider,
+		configProvider: configProvider,
 	}
 	eventBus.RegisterHandler(
 		reflect.TypeOf(nodemanager.NeighbourAddedEvent{}),
@@ -108,11 +108,9 @@ func (fd *FailureDetector) Heartbeat(ctx gorums.ServerCtx, request *fdprotos.Hea
 }
 
 func (fd *FailureDetector) sendHeartbeat() {
-	go func() {
-		gorumsConfig := fd.gorumsProvider.FailureDetectorConfig()
-		msg := fdprotos.HeartbeatMessage{NodeID: fd.id}
-		ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
-		defer cancel()
-		gorumsConfig.Heartbeat(ctx, &msg)
-	}()
+	gorumsConfig := fd.configProvider.FailureDetectorConfig()
+	msg := fdprotos.HeartbeatMessage{NodeID: fd.id}
+	ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
+	defer cancel()
+	gorumsConfig.Heartbeat(ctx, &msg)
 }
