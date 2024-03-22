@@ -10,7 +10,10 @@ build: protos
 	go build -o bin/oncetreeclient cmd/oncetreeclient/main.go
 
 test:
-	go test ./...
+	go test ./... -race
+
+bench:
+	go test -run=None ./... -bench=. -benchmem -benchtime=1s
 
 format:
 	find . -type f -name "*.go" | xargs gofumpt -w

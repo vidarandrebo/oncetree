@@ -22,16 +22,24 @@ func StartTestNodes() (map[string]*Node, *sync.WaitGroup) {
 	)
 	var wg sync.WaitGroup
 	nodes := make(map[string]*Node)
+	var mut sync.Mutex
 	for _, id := range nodeIDs {
 		id := id
 		wg.Add(1)
-		node := NewNode(id, nodeMap[id])
-		nodes[id] = node
+		newNode := NewNode(id, nodeMap[id])
+		mut.Lock()
+		nodes[id] = newNode
+		mut.Unlock()
 		go func() {
-			nodes[id].Run("")
+			mut.Lock()
+			node := nodes[id]
+			mut.Unlock()
+			node.Run("")
 			wg.Done()
 		}()
+		mut.Lock()
 		go nodes[id].SetNeighboursFromNodeMap(nodeIDs, nodeMap)
+		mut.Unlock()
 	}
 	return nodes, &wg
 }

@@ -43,6 +43,8 @@ func (gp *GorumsProvider) SetNodes(nodes map[string]uint32) {
 		},
 		gorums.WithNodeMap(nodes),
 	)
+	gp.configurations.nmConfig.Nodes()
+
 	if err != nil {
 		gp.logger.Println(err)
 		gp.logger.Println("[GorumsProvider] - Failed to create nodemanager config")
@@ -54,6 +56,7 @@ func (gp *GorumsProvider) SetNodes(nodes map[string]uint32) {
 	gp.configurations.nodeConfig, err = gp.managers.nodeManager.NewConfiguration(
 		gorums.WithNodeMap(nodes),
 	)
+	gp.configurations.nodeConfig.Nodes()
 	if err != nil {
 		gp.logger.Println(err)
 		gp.logger.Println("[GorumsProvider] - Failed to create node config")
@@ -68,6 +71,7 @@ func (gp *GorumsProvider) SetNodes(nodes map[string]uint32) {
 		},
 		gorums.WithNodeMap(nodes),
 	)
+	gp.configurations.kvsConfig.Nodes()
 	if err != nil {
 		gp.logger.Println(err)
 		gp.logger.Println("[GorumsProvider] - Failed to create storage config")
@@ -82,6 +86,7 @@ func (gp *GorumsProvider) SetNodes(nodes map[string]uint32) {
 		},
 		gorums.WithNodeMap(nodes),
 	)
+	gp.configurations.fdConfig.Nodes()
 	if err != nil {
 		gp.logger.Println(err)
 		gp.logger.Println("[GorumsProvider] - Failed to create failuredetector config")

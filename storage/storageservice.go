@@ -56,10 +56,6 @@ func (ss *StorageService) shareAll(nodeID string) {
 	gorumsConfig := ss.gorumsProvider.StorageConfig()
 	node, ok := gorumsConfig.Node(neighbour.GorumsID)
 	if !ok {
-		ss.logger.Println(gorumsConfig.Nodes())
-		for _, n := range gorumsConfig.Nodes() {
-			ss.logger.Println(n.ID())
-		}
 		ss.logger.Printf("[StorageService] - did not find node %d in gorums config", neighbour.GorumsID)
 		return
 	}
@@ -109,12 +105,16 @@ func (ss *StorageService) sendGossip(originID string, key int64, values map[stri
 			Timestamp: ts,
 		},
 		)
-		ss.logger.Println(err)
+		if err != nil {
+
+			ss.logger.Println(err)
+		}
 		cancel()
 	}
 }
 
 func (ss *StorageService) Write(ctx gorums.ServerCtx, request *kvsprotos.WriteRequest) (response *emptypb.Empty, err error) {
+	ss.logger.Println("[StorageService] write rpc")
 	ts := ss.timestamp.Lock()
 	*ts++
 	writeTs := *ts
