@@ -34,6 +34,11 @@ loop:
 			break loop
 		}
 	}
+	close(eb.pendingEvents)
+	eb.logger.Println("[EventBus] - handling last events")
+	for e := range eb.pendingEvents {
+		eb.handle(e)
+	}
 }
 
 func (eb *EventBus) handle(event any) {

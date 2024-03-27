@@ -43,6 +43,7 @@ func (gp *GorumsProvider) SetNodes(nodes map[string]uint32) {
 		},
 		gorums.WithNodeMap(nodes),
 	)
+
 	if err != nil {
 		gp.logger.Println(err)
 		gp.logger.Println("[GorumsProvider] - Failed to create nodemanager config")

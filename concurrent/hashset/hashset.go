@@ -13,7 +13,7 @@ func NewHashSet[T comparable]() HashSet[T] {
 }
 
 func (s HashSet[T]) String() string {
-	valAsStrings := make([]string, 0)
+	valAsStrings := make([]string, 0, len(s))
 	values := s.Values()
 	for _, value := range values {
 		valAsStrings = append(valAsStrings, fmt.Sprintf("%v", value))
@@ -35,7 +35,7 @@ func (s HashSet[T]) Delete(key T) {
 }
 
 func (s HashSet[T]) Values() []T {
-	values := make([]T, 0)
+	values := make([]T, 0, len(s))
 	for value := range s {
 		values = append(values, value)
 	}

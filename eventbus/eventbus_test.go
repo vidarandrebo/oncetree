@@ -6,7 +6,6 @@ import (
 	"reflect"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/vidarandrebo/oncetree/consts"
@@ -24,10 +23,9 @@ func TestEventBus_Handle(t *testing.T) {
 		et.Increment()
 	})
 	eBus.Push(e)
-	time.Sleep(1 * time.Second)
-	assert.Equal(t, 100, et.count)
 	cancel()
 	wg.Wait()
+	assert.Equal(t, 100, et.count)
 }
 
 func TestEventBus_Handle_ManyHandlers(t *testing.T) {
@@ -51,10 +49,9 @@ func TestEventBus_Handle_ManyHandlers(t *testing.T) {
 		et.Decrement()
 	})
 	eBus.Push(e)
-	time.Sleep(1 * time.Second)
-	assert.Equal(t, 101, et.count)
 	cancel()
 	wg.Wait()
+	assert.Equal(t, 101, et.count)
 }
 
 type testEvent struct{}
@@ -99,8 +96,7 @@ func TestEventBus_Handle_WithData(t *testing.T) {
 		et.Add(eventData.value2)
 	})
 	eBus.Push(e)
-	time.Sleep(1 * time.Second)
-	assert.Equal(t, 114, et.count)
 	cancel()
 	wg.Wait()
+	assert.Equal(t, 114, et.count)
 }
