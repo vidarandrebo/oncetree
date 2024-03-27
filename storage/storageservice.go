@@ -106,7 +106,6 @@ func (ss *StorageService) sendGossip(originID string, key int64, values map[stri
 		},
 		)
 		if err != nil {
-
 			ss.logger.Println(err)
 		}
 		cancel()

@@ -9,19 +9,18 @@ import (
 	"reflect"
 	"sync"
 
+	"github.com/relab/gorums"
 	"github.com/vidarandrebo/oncetree/gorumsprovider"
+	fdprotos "github.com/vidarandrebo/oncetree/protos/failuredetector"
+	kvsprotos "github.com/vidarandrebo/oncetree/protos/keyvaluestorage"
+	"github.com/vidarandrebo/oncetree/protos/node"
+	nmprotos "github.com/vidarandrebo/oncetree/protos/nodemanager"
 
 	"github.com/google/uuid"
 	"github.com/vidarandrebo/oncetree/eventbus"
 	"github.com/vidarandrebo/oncetree/failuredetector"
 	"github.com/vidarandrebo/oncetree/nodemanager"
 	"github.com/vidarandrebo/oncetree/storage"
-
-	"github.com/relab/gorums"
-	fdprotos "github.com/vidarandrebo/oncetree/protos/failuredetector"
-	kvsprotos "github.com/vidarandrebo/oncetree/protos/keyvaluestorage"
-	"github.com/vidarandrebo/oncetree/protos/node"
-	nmprotos "github.com/vidarandrebo/oncetree/protos/nodemanager"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 

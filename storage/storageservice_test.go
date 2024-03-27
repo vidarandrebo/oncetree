@@ -47,7 +47,7 @@ var (
 
 // TestStorageService_Write tests writing the same value to all nodes, and checking that the values has propagated to all nodes.
 func TestStorageService_shareAll(t *testing.T) {
-	testNodes, wg := oncetree.StartTestNodes()
+	testNodes, wg := oncetree.StartTestNodes(true)
 	time.Sleep(consts.GorumsDialTimeout)
 	mgr, cfg := createKeyValueStorageConfig()
 
@@ -58,7 +58,7 @@ func TestStorageService_shareAll(t *testing.T) {
 		})
 		assert.Nil(t, writeErr)
 	}
-	newNode, newWg := oncetree.StartTestNode()
+	newNode, newWg := oncetree.StartTestNode(true)
 	time.Sleep(consts.RPCContextTimeout)
 
 	// add the new node to config
@@ -90,7 +90,7 @@ func TestStorageService_shareAll(t *testing.T) {
 
 // TestStorageService_Write tests writing the same value to all nodes, and checking that the values has propagated to all nodes.
 func TestStorageService_Write(t *testing.T) {
-	testNodes, wg := oncetree.StartTestNodes()
+	testNodes, wg := oncetree.StartTestNodes(false)
 	time.Sleep(consts.GorumsDialTimeout)
 	_, cfg := createKeyValueStorageConfig()
 
@@ -137,7 +137,7 @@ func createKeyValueStorageConfig() (*kvsprotos.Manager, *kvsprotos.Configuration
 }
 
 func BenchmarkStorageService_Write(t *testing.B) {
-	testNodes, wg := oncetree.StartTestNodes()
+	testNodes, wg := oncetree.StartTestNodes(true)
 	// time.Sleep(consts.GorumsDialTimeout)
 	_, cfg := createKeyValueStorageConfig()
 	node := cfg.Nodes()[0]

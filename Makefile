@@ -13,7 +13,7 @@ test:
 	go test ./... -race
 
 bench:
-	go test -run=None ./... -bench=. -benchmem -benchtime=1s
+	go test -run=None ./... -bench=. -benchmem -benchtime=5s
 
 format:
 	find . -type f -name "*.go" | xargs gofumpt -w
@@ -25,7 +25,7 @@ clean:
 deps:
 	go install mvdan.cc/gofumpt@latest
 	go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
-	go install github.com/relab/gorums/cmd/protoc-gen-gorums@latest
+	go install github.com/relab/gorums/cmd/protoc-gen-gorums@master
 
 .PHONY: protos
 
