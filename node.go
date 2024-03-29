@@ -17,6 +17,7 @@ import (
 	nmprotos "github.com/vidarandrebo/oncetree/protos/nodemanager"
 
 	"github.com/google/uuid"
+	"github.com/vidarandrebo/oncetree/consts"
 	"github.com/vidarandrebo/oncetree/eventbus"
 	"github.com/vidarandrebo/oncetree/failuredetector"
 	"github.com/vidarandrebo/oncetree/nodemanager"
@@ -44,7 +45,7 @@ func NewNode(id string, rpcAddr string) *Node {
 	logger := log.New(os.Stderr, fmt.Sprintf("[NodeID: %s] ", id), log.Ltime|log.Lmsgprefix)
 	eventBus := eventbus.New(logger)
 	gorumsProvider := gorumsprovider.New(logger)
-	nodeManager := nodemanager.New(id, rpcAddr, 2, logger, eventBus, gorumsProvider)
+	nodeManager := nodemanager.New(id, rpcAddr, consts.Fanout, logger, eventBus, gorumsProvider)
 	failureDetector := failuredetector.New(id, logger, nodeManager, eventBus, gorumsProvider)
 	storageService := storage.NewStorageService(id, logger, nodeManager, eventBus, gorumsProvider)
 

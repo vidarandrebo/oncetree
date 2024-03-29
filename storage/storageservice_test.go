@@ -137,13 +137,13 @@ func createKeyValueStorageConfig() (*kvsprotos.Manager, *kvsprotos.Configuration
 }
 
 func BenchmarkStorageService_Write(t *testing.B) {
-	testNodes, wg := oncetree.StartTestNodes(true)
+	testNodes, wg := oncetree.StartTestNodes(false)
 	// time.Sleep(consts.GorumsDialTimeout)
 	_, cfg := createKeyValueStorageConfig()
-	node := cfg.Nodes()[0]
+	nodes := cfg.Nodes()
 
 	for i := 0; i < t.N; i++ {
-		_, err := node.Write(context.Background(), &kvsprotos.WriteRequest{
+		_, err := nodes[0].Write(context.Background(), &kvsprotos.WriteRequest{
 			Key:   int64(i),
 			Value: int64(i),
 		})

@@ -9,36 +9,76 @@ import (
 )
 
 type EventBus struct {
-	pendingEvents chan any
-	handlers      map[reflect.Type][]func(any)
-	mut           sync.RWMutex
-	logger        *log.Logger
+	pendingTasks    chan func()
+	taskChanClosed  bool
+	pendingEvents   chan any
+	eventChanClosed bool
+	handlers        map[reflect.Type][]func(any)
+	mut             sync.RWMutex
+	logger          *log.Logger
 }
 
 func New(logger *log.Logger) *EventBus {
 	return &EventBus{
-		handlers:      make(map[reflect.Type][]func(any)),
-		pendingEvents: make(chan any, 100),
-		logger:        logger,
+		pendingTasks:    make(chan func(), 64),
+		taskChanClosed:  false,
+		pendingEvents:   make(chan any, 100),
+		eventChanClosed: false,
+		handlers:        make(map[reflect.Type][]func(any)),
+		logger:          logger,
 	}
 }
 
-func (eb *EventBus) Run(cxt context.Context, wg *sync.WaitGroup) {
+func (eb *EventBus) Run(ctx context.Context, wg *sync.WaitGroup) {
+	var taskHandlerWg sync.WaitGroup
 	defer wg.Done()
+	numTaskHandlers := 1
+	for i := 0; i < numTaskHandlers; i++ {
+		taskHandlerWg.Add(1)
+		go eb.taskHandler(ctx, &taskHandlerWg)
+	}
 loop:
 	for {
 		select {
 		case event := <-eb.pendingEvents:
-			eb.handle(event)
-		case <-cxt.Done():
+			if event != nil {
+				eb.handle(event)
+			} else {
+				// break by closing channel, should be test only behaviour
+				fmt.Println("break after closed chan")
+				break loop
+			}
+		case <-ctx.Done():
 			break loop
 		}
 	}
-	close(eb.pendingEvents)
-	eb.logger.Println("[EventBus] - handling last events")
-	for e := range eb.pendingEvents {
-		eb.handle(e)
+	taskHandlerWg.Wait()
+}
+
+func (eb *EventBus) taskHandler(ctx context.Context, wg *sync.WaitGroup) {
+loop:
+	for {
+		select {
+		case task := <-eb.pendingTasks:
+			// task can be nil if chan is closed
+			if task != nil {
+				select {
+				case <-ctx.Done():
+					break loop
+				default:
+					eb.logger.Println("[EventBus] handling task")
+					task()
+				}
+			} else {
+				// break by closing channel, should be test only behaviour
+				fmt.Println("break after closed chan")
+				break loop
+			}
+		case <-ctx.Done():
+			break loop
+		}
 	}
+	wg.Done()
 }
 
 func (eb *EventBus) handle(event any) {
@@ -53,8 +93,22 @@ func (eb *EventBus) handle(event any) {
 	}
 }
 
-func (eb *EventBus) Push(event any) {
+func (eb *EventBus) PushEvent(event any) {
+	eb.mut.RLock()
+	defer eb.mut.RUnlock()
+	if eb.eventChanClosed {
+		return
+	}
 	eb.pendingEvents <- event
+}
+
+func (eb *EventBus) PushTask(task func()) {
+	eb.mut.RLock()
+	defer eb.mut.RUnlock()
+	if eb.taskChanClosed {
+		return
+	}
+	eb.pendingTasks <- task
 }
 
 func (eb *EventBus) eventHandlers(eventType reflect.Type) ([]func(any), error) {

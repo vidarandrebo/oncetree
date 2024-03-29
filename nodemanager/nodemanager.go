@@ -120,7 +120,7 @@ func (nm *NodeManager) AddNeighbour(nodeID string, address string, role NodeRole
 	nm.setNeighbour(nodeID, neighbour)
 	nm.gorumsProvider.SetNodes(nm.GorumsNeighbourMap())
 	if role != Tmp {
-		nm.eventBus.Push(NewNeigbourAddedEvent(nodeID))
+		nm.eventBus.PushEvent(NewNeigbourAddedEvent(nodeID))
 	}
 }
 
@@ -300,7 +300,7 @@ func (nm *NodeManager) NextJoinID() string {
 }
 
 func (nm *NodeManager) Ready(ctx gorums.ServerCtx, request *nmprotos.ReadyMessage) (response *emptypb.Empty, err error) {
-	nm.eventBus.Push(NewNeighbourReadyEvent(request.GetNodeID()))
+	nm.eventBus.PushEvent(NewNeighbourReadyEvent(request.GetNodeID()))
 	return &emptypb.Empty{}, nil
 }
 

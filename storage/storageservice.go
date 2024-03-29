@@ -97,7 +97,6 @@ func (ss *StorageService) sendGossip(originID string, key int64, values map[stri
 		}
 		// value, err := ss.storage.ReadValueExceptNode(nodeID, key)
 		ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
-		ctx.Done()
 		_, err := gorumsNode.Gossip(ctx, &kvsprotos.GossipMessage{
 			NodeID:    ss.id,
 			Key:       key,
@@ -106,7 +105,7 @@ func (ss *StorageService) sendGossip(originID string, key int64, values map[stri
 		},
 		)
 		if err != nil {
-			ss.logger.Println(err)
+			ss.logger.Printf("[StorageService]109 - %v", err)
 		}
 		cancel()
 	}
@@ -131,7 +130,9 @@ func (ss *StorageService) Write(ctx gorums.ServerCtx, request *kvsprotos.WriteRe
 	}
 	if ok {
 		// only start gossip if write was successful
-		ss.sendGossip(ss.id, request.GetKey(), valuesToGossip, writeTs)
+		ss.eventBus.PushTask(func() {
+			ss.sendGossip(ss.id, request.GetKey(), valuesToGossip, writeTs)
+		})
 	} else {
 		ss.logger.Printf("write to key %v failed because existing value has higher timestamp", writeTs)
 	}
@@ -172,12 +173,12 @@ func (ss *StorageService) Gossip(ctx gorums.ServerCtx, request *kvsprotos.Gossip
 	ss.timestamp.Unlock(&ts)
 
 	if err != nil {
-		ss.logger.Println(err)
+		ss.logger.Printf("[StorageService]176 - %v", err)
 		return &emptypb.Empty{}, nil
 	}
 
 	if updated {
-		ss.sendGossip(request.NodeID, request.GetKey(), valuesToGossip, writeTs)
+		go ss.sendGossip(request.NodeID, request.GetKey(), valuesToGossip, writeTs)
 	}
 	return &emptypb.Empty{}, nil
 }
