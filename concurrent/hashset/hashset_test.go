@@ -7,7 +7,7 @@ import (
 
 func BenchmarkConcurrentHashSet_String(b *testing.B) {
 	set := NewHashSet[int]()
-	for len(set) < 10000 {
+	for len(set) < 1000 {
 		set.Add(rand.Int())
 	}
 	for i := 0; i < b.N; i++ {
@@ -17,7 +17,7 @@ func BenchmarkConcurrentHashSet_String(b *testing.B) {
 
 func BenchmarkConcurrentHashSet_Values(b *testing.B) {
 	set := NewHashSet[int]()
-	for len(set) < 10000 {
+	for len(set) < 1000 {
 		set.Add(rand.Int())
 	}
 	for i := 0; i < b.N; i++ {

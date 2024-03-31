@@ -141,10 +141,11 @@ func (ss *StorageService) Write(ctx gorums.ServerCtx, request *kvsprotos.WriteRe
 		return &emptypb.Empty{}, nil
 	}
 	if ok && ss.hasValueToGossip(ss.id, valuesToGossip) {
+		ss.sendGossip(ss.id, request.GetKey(), valuesToGossip, writeTs, request.GetWriteID())
 		// only start gossip if write was successful
-		ss.eventBus.PushTask(func() {
-			ss.sendGossip(ss.id, request.GetKey(), valuesToGossip, writeTs, request.GetWriteID())
-		})
+		//ss.eventBus.PushTask(func() {
+		//ss.sendGossip(ss.id, request.GetKey(), valuesToGossip, writeTs, request.GetWriteID())
+		//})
 	} else {
 		ss.logger.Printf("write to key %v failed because existing value has higher timestamp", writeTs)
 	}
@@ -192,10 +193,10 @@ func (ss *StorageService) Gossip(ctx gorums.ServerCtx, request *kvsprotos.Gossip
 	}
 
 	if updated && ss.hasValueToGossip(request.GetNodeID(), valuesToGossip) {
-		// go ss.sendGossip(request.NodeID, request.GetKey(), valuesToGossip, writeTs)
-		ss.eventBus.PushTask(func() {
-			go ss.sendGossip(request.GetNodeID(), request.GetKey(), valuesToGossip, writeTs, request.GetWriteID())
-		})
+		go ss.sendGossip(request.NodeID, request.GetKey(), valuesToGossip, writeTs, request.GetWriteID())
+		//ss.eventBus.PushTask(func() {
+		//go ss.sendGossip(request.GetNodeID(), request.GetKey(), valuesToGossip, writeTs, request.GetWriteID())
+		//})
 	}
 	// ss.logger.Printf("[StorageService] - gossip rpc, writeID = %d, nodeID = %s handled\n", request.GetWriteID(), request.GetNodeID())
 	return &emptypb.Empty{}, nil

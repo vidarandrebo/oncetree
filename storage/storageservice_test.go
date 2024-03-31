@@ -139,7 +139,7 @@ func createKeyValueStorageConfig() (*kvsprotos.Manager, *kvsprotos.Configuration
 }
 
 func BenchmarkStorageService_Write(t *testing.B) {
-	testNodes, wg := oncetree.StartTestNodes(false)
+	testNodes, wg := oncetree.StartTestNodes(true)
 	log.Println("[Bench] - sleep for dial timeout before starting to write")
 	time.Sleep(consts.RPCContextTimeout * 2)
 	log.Println("[Bench] - starting write")
@@ -147,7 +147,7 @@ func BenchmarkStorageService_Write(t *testing.B) {
 	nodes := cfg.Nodes()
 
 	for i := 0; i < t.N; i++ {
-		_, err := nodes[0].Write(context.Background(), &kvsprotos.WriteRequest{
+		_, err := nodes[i%len(nodes)].Write(context.Background(), &kvsprotos.WriteRequest{
 			Key:     int64(i),
 			Value:   int64(i),
 			WriteID: int64(i),
@@ -155,9 +155,7 @@ func BenchmarkStorageService_Write(t *testing.B) {
 		if err != nil {
 			panic(err)
 		}
-		if i%1000 == 0 {
-			log.Printf("[Bench] %d", i)
-		}
+		// log.Printf("[Bench] %d", i)
 	}
 	log.Println("[Bench] - sleep for rpc context timeout")
 	time.Sleep(consts.RPCContextTimeout)

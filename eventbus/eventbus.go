@@ -20,7 +20,7 @@ type EventBus struct {
 
 func New(logger *log.Logger) *EventBus {
 	return &EventBus{
-		pendingTasks:    make(chan func()),
+		pendingTasks:    make(chan func(), 64),
 		taskChanClosed:  false,
 		pendingEvents:   make(chan any, 256),
 		eventChanClosed: false,
@@ -32,7 +32,7 @@ func New(logger *log.Logger) *EventBus {
 func (eb *EventBus) Run(ctx context.Context, wg *sync.WaitGroup) {
 	var taskHandlerWg sync.WaitGroup
 	defer wg.Done()
-	numTaskHandlers := 1
+	numTaskHandlers := 2
 	for i := 0; i < numTaskHandlers; i++ {
 		taskHandlerWg.Add(1)
 		go eb.taskHandler(ctx, &taskHandlerWg)
