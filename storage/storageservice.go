@@ -84,16 +84,23 @@ func (ss *StorageService) shareAll(nodeID string) {
 	ss.logger.Printf("[StorageService] - completed sharing values with node %v", nodeID)
 }
 
-func (ss *StorageService) sendGossip(originID string, key int64, values map[string]int64, ts int64) {
+func (ss *StorageService) sendGossip(originID string, key int64, values map[string]int64, ts int64, writeID int64) {
+	sent := false
+	// ss.logger.Printf("[StorageService] - sendGossip, key = %d, origin = %s, writeID = %d", key, originID, writeID)
 	gorumsConfig := ss.configProvider.StorageConfig()
 	for _, gorumsNode := range gorumsConfig.Nodes() {
 		nodeID, ok := ss.nodeManager.NodeID(gorumsNode.ID())
 		if !ok {
+			ss.logger.Println("[StorageService] - node lookup failed")
 			continue
 		}
 		// skip returning to originID and sending to self.
-		if nodeID == originID || nodeID == ss.id {
+		if nodeID == originID {
+			// ss.logger.Printf("[StorageService] - node is origin, writeID = %d", writeID)
 			continue
+		}
+		if nodeID == ss.id {
+			ss.logger.Panicf("[StorageService] - node is self, writeID = %d", writeID)
 		}
 		// value, err := ss.storage.ReadValueExceptNode(nodeID, key)
 		ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
@@ -102,17 +109,22 @@ func (ss *StorageService) sendGossip(originID string, key int64, values map[stri
 			Key:       key,
 			Value:     values[nodeID],
 			Timestamp: ts,
+			WriteID:   writeID,
 		},
 		)
+		sent = true
 		if err != nil {
-			ss.logger.Printf("[StorageService]109 - %v", err)
+			ss.logger.Panicf("[StorageService] - Gossip rpc of writeID = %d to nodeID = %s err = %v", writeID, nodeID, err)
 		}
 		cancel()
+	}
+	if sent == false {
+		// ss.logger.Printf("[StorageService] - gossip rpc of writeID = %d, node is leaf-node", writeID)
 	}
 }
 
 func (ss *StorageService) Write(ctx gorums.ServerCtx, request *kvsprotos.WriteRequest) (response *emptypb.Empty, err error) {
-	ss.logger.Println("[StorageService] write rpc")
+	// ss.logger.Printf("[StorageService] - write rpc, key = %d, value = %d, writeID = %d", request.GetKey(), request.GetValue(), request.GetWriteID())
 	ts := ss.timestamp.Lock()
 	*ts++
 	writeTs := *ts
@@ -125,13 +137,13 @@ func (ss *StorageService) Write(ctx gorums.ServerCtx, request *kvsprotos.WriteRe
 	ss.timestamp.Unlock(&ts)
 
 	if err != nil {
-		ss.logger.Println(err)
+		ss.logger.Panicln(err)
 		return &emptypb.Empty{}, nil
 	}
-	if ok {
+	if ok && ss.hasValueToGossip(ss.id, valuesToGossip) {
 		// only start gossip if write was successful
 		ss.eventBus.PushTask(func() {
-			ss.sendGossip(ss.id, request.GetKey(), valuesToGossip, writeTs)
+			ss.sendGossip(ss.id, request.GetKey(), valuesToGossip, writeTs, request.GetWriteID())
 		})
 	} else {
 		ss.logger.Printf("write to key %v failed because existing value has higher timestamp", writeTs)
@@ -161,6 +173,8 @@ func (ss *StorageService) PrintState(ctx gorums.ServerCtx, request *emptypb.Empt
 }
 
 func (ss *StorageService) Gossip(ctx gorums.ServerCtx, request *kvsprotos.GossipMessage) (response *emptypb.Empty, err error) {
+	// ctx.Release()
+	// ss.logger.Printf("[StorageService] - gossip rpc, writeID = %d, nodeID = %s received", request.GetWriteID(), request.GetNodeID())
 	ts := ss.timestamp.Lock()
 	*ts++
 	writeTs := *ts
@@ -173,12 +187,28 @@ func (ss *StorageService) Gossip(ctx gorums.ServerCtx, request *kvsprotos.Gossip
 	ss.timestamp.Unlock(&ts)
 
 	if err != nil {
-		ss.logger.Printf("[StorageService]176 - %v", err)
+		ss.logger.Panicf("[StorageService]177 - %v", err)
 		return &emptypb.Empty{}, nil
 	}
 
-	if updated {
-		go ss.sendGossip(request.NodeID, request.GetKey(), valuesToGossip, writeTs)
+	if updated && ss.hasValueToGossip(request.GetNodeID(), valuesToGossip) {
+		// go ss.sendGossip(request.NodeID, request.GetKey(), valuesToGossip, writeTs)
+		ss.eventBus.PushTask(func() {
+			go ss.sendGossip(request.GetNodeID(), request.GetKey(), valuesToGossip, writeTs, request.GetWriteID())
+		})
 	}
+	// ss.logger.Printf("[StorageService] - gossip rpc, writeID = %d, nodeID = %s handled\n", request.GetWriteID(), request.GetNodeID())
 	return &emptypb.Empty{}, nil
+}
+
+// hasValueToGossip determines if any of the values stored will have to be gossiped
+//
+// This fn is needed to make the Gossip fn converge when the task-queue is bounded
+func (ss *StorageService) hasValueToGossip(origin string, valuesToGossip map[string]int64) bool {
+	for key := range valuesToGossip {
+		if (key != ss.id) && (key != origin) {
+			return true
+		}
+	}
+	return false
 }

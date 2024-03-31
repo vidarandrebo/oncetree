@@ -2,6 +2,7 @@ package storage_test
 
 import (
 	"context"
+	"log"
 	"testing"
 	"time"
 
@@ -94,14 +95,15 @@ func TestStorageService_Write(t *testing.T) {
 	time.Sleep(consts.GorumsDialTimeout)
 	_, cfg := createKeyValueStorageConfig()
 
-	for _, node := range cfg.Nodes() {
+	for i, node := range cfg.Nodes() {
 		_, writeErr := node.Write(context.Background(), &kvsprotos.WriteRequest{
-			Key:   20,
-			Value: 10,
+			Key:     20,
+			Value:   10,
+			WriteID: int64(i + 1),
 		})
 		assert.Nil(t, writeErr)
 	}
-	time.Sleep(consts.RPCContextTimeout)
+	time.Sleep(consts.RPCContextTimeout * 2)
 
 	responses, readErr := cfg.ReadAll(context.Background(), &kvsprotos.ReadRequest{
 		Key: 20,
@@ -138,20 +140,28 @@ func createKeyValueStorageConfig() (*kvsprotos.Manager, *kvsprotos.Configuration
 
 func BenchmarkStorageService_Write(t *testing.B) {
 	testNodes, wg := oncetree.StartTestNodes(false)
-	// time.Sleep(consts.GorumsDialTimeout)
+	log.Println("[Bench] - sleep for dial timeout before starting to write")
+	time.Sleep(consts.RPCContextTimeout * 2)
+	log.Println("[Bench] - starting write")
 	_, cfg := createKeyValueStorageConfig()
 	nodes := cfg.Nodes()
 
 	for i := 0; i < t.N; i++ {
 		_, err := nodes[0].Write(context.Background(), &kvsprotos.WriteRequest{
-			Key:   int64(i),
-			Value: int64(i),
+			Key:     int64(i),
+			Value:   int64(i),
+			WriteID: int64(i),
 		})
 		if err != nil {
 			panic(err)
 		}
+		if i%1000 == 0 {
+			log.Printf("[Bench] %d", i)
+		}
 	}
-	// time.Sleep(consts.RPCContextTimeout)
+	log.Println("[Bench] - sleep for rpc context timeout")
+	time.Sleep(consts.RPCContextTimeout)
+	log.Println("[Bench] - benchmark done")
 
 	for _, node := range testNodes {
 		node.Stop("stopped by test")

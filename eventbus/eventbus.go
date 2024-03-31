@@ -20,9 +20,9 @@ type EventBus struct {
 
 func New(logger *log.Logger) *EventBus {
 	return &EventBus{
-		pendingTasks:    make(chan func(), 64),
+		pendingTasks:    make(chan func()),
 		taskChanClosed:  false,
-		pendingEvents:   make(chan any, 100),
+		pendingEvents:   make(chan any, 256),
 		eventChanClosed: false,
 		handlers:        make(map[reflect.Type][]func(any)),
 		logger:          logger,
@@ -66,7 +66,6 @@ loop:
 				case <-ctx.Done():
 					break loop
 				default:
-					eb.logger.Println("[EventBus] handling task")
 					task()
 				}
 			} else {
@@ -97,15 +96,20 @@ func (eb *EventBus) PushEvent(event any) {
 	eb.mut.RLock()
 	defer eb.mut.RUnlock()
 	if eb.eventChanClosed {
+		eb.logger.Println("[EventBus] - event discarded due to closed channel")
 		return
 	}
 	eb.pendingEvents <- event
 }
 
 func (eb *EventBus) PushTask(task func()) {
+	if len(eb.pendingTasks) > 200 {
+		eb.logger.Println("[EventBus] - over 200 entries in task queue")
+	}
 	eb.mut.RLock()
 	defer eb.mut.RUnlock()
 	if eb.taskChanClosed {
+		eb.logger.Println("[EventBus] - task discarded due to closed channel")
 		return
 	}
 	eb.pendingTasks <- task
