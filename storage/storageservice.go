@@ -175,6 +175,7 @@ func (ss *StorageService) PrintState(ctx gorums.ServerCtx, request *emptypb.Empt
 
 func (ss *StorageService) Gossip(ctx gorums.ServerCtx, request *kvsprotos.GossipMessage) (response *emptypb.Empty, err error) {
 	ctx.Release()
+	ts := ss.timestamp.Lock()
 	*ts++
 	writeTs := *ts
 	updated := ss.storage.WriteValue(request.GetNodeID(), request.GetKey(), request.GetValue(), request.GetTimestamp())
