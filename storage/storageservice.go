@@ -174,9 +174,7 @@ func (ss *StorageService) PrintState(ctx gorums.ServerCtx, request *emptypb.Empt
 }
 
 func (ss *StorageService) Gossip(ctx gorums.ServerCtx, request *kvsprotos.GossipMessage) (response *emptypb.Empty, err error) {
-	// ctx.Release()
-	// ss.logger.Printf("[StorageService] - gossip rpc, writeID = %d, nodeID = %s received", request.GetWriteID(), request.GetNodeID())
-	ts := ss.timestamp.Lock()
+	ctx.Release()
 	*ts++
 	writeTs := *ts
 	updated := ss.storage.WriteValue(request.GetNodeID(), request.GetKey(), request.GetValue(), request.GetTimestamp())
@@ -194,9 +192,6 @@ func (ss *StorageService) Gossip(ctx gorums.ServerCtx, request *kvsprotos.Gossip
 
 	if updated && ss.hasValueToGossip(request.GetNodeID(), valuesToGossip) {
 		go ss.sendGossip(request.NodeID, request.GetKey(), valuesToGossip, writeTs, request.GetWriteID())
-		//ss.eventBus.PushTask(func() {
-		//go ss.sendGossip(request.GetNodeID(), request.GetKey(), valuesToGossip, writeTs, request.GetWriteID())
-		//})
 	}
 	// ss.logger.Printf("[StorageService] - gossip rpc, writeID = %d, nodeID = %s handled\n", request.GetWriteID(), request.GetNodeID())
 	return &emptypb.Empty{}, nil
