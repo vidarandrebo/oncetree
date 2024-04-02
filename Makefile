@@ -13,7 +13,7 @@ test:
 	go test ./... -race
 
 bench:
-	go test -run=None ./... -bench=. -benchmem -benchtime=5s
+	go test -run=None ./... -bench=. -benchmem -benchtime=100000x
 
 format:
 	find . -type f -name "*.go" | xargs gofumpt -w

@@ -71,7 +71,7 @@ func (fd *FailureDetector) DeregisterNode(nodeID string) {
 }
 
 func (fd *FailureDetector) Suspect(nodeID string) {
-	fd.eventBus.Push(NewNodeFailedEvent(nodeID))
+	fd.eventBus.PushEvent(NewNodeFailedEvent(nodeID))
 }
 
 func (fd *FailureDetector) Run(ctx context.Context, wg *sync.WaitGroup) {

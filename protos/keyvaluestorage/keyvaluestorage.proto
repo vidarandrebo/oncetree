@@ -15,6 +15,7 @@ message ReadAllResponse { map<string, int64> Value = 1; }
 message WriteRequest {
   int64 Key = 1;
   int64 Value = 2;
+  int64 WriteID = 3;
 }
 
 message GossipMessage {
@@ -22,6 +23,7 @@ message GossipMessage {
   int64 Key = 2;
   int64 Value = 3;
   int64 Timestamp = 4;
+  int64 WriteID = 5;
 }
 
 service KeyValueStorage {

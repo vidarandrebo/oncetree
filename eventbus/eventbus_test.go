@@ -22,9 +22,11 @@ func TestEventBus_Handle(t *testing.T) {
 	eBus.RegisterHandler(reflect.TypeOf(testEvent{}), func(event any) {
 		et.Increment()
 	})
-	eBus.Push(e)
-	cancel()
+	eBus.PushEvent(e)
+
+	eBus.closeChannels()
 	wg.Wait()
+	cancel()
 	assert.Equal(t, 100, et.count)
 }
 
@@ -48,9 +50,11 @@ func TestEventBus_Handle_ManyHandlers(t *testing.T) {
 	eBus.RegisterHandler(reflect.TypeOf(testEvent{}), func(any) {
 		et.Decrement()
 	})
-	eBus.Push(e)
-	cancel()
+	eBus.PushEvent(e)
+
+	eBus.closeChannels()
 	wg.Wait()
+	cancel()
 	assert.Equal(t, 101, et.count)
 }
 
@@ -95,8 +99,63 @@ func TestEventBus_Handle_WithData(t *testing.T) {
 		et.Add(eventData.value1)
 		et.Add(eventData.value2)
 	})
-	eBus.Push(e)
-	cancel()
+	eBus.PushEvent(e)
+
+	eBus.closeChannels()
 	wg.Wait()
+	cancel()
 	assert.Equal(t, 114, et.count)
+}
+
+func TestEventBus_HandleOneTask(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	var wg sync.WaitGroup
+	wg.Add(1)
+	eBus := New(log.Default())
+	go eBus.Run(ctx, &wg)
+
+	et := testEventTarget{count: 10}
+	closure := func() {
+		et.count++
+	}
+	eBus.PushTask(closure)
+
+	eBus.closeChannels()
+	wg.Wait()
+	cancel()
+	assert.Equal(t, 11, et.count)
+}
+
+func TestEventBus_HandleMultipleTasks(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	var wg sync.WaitGroup
+	wg.Add(1)
+	eBus := New(log.Default())
+	go eBus.Run(ctx, &wg)
+
+	var mut sync.Mutex
+	et := testEventTarget{count: 10}
+	closure := func() {
+		// need mutex for this test, since there are multiple task handlers
+		mut.Lock()
+		et.count++
+		mut.Unlock()
+	}
+	eBus.PushTask(closure)
+	eBus.PushTask(closure)
+	eBus.PushTask(closure)
+	eBus.PushTask(closure)
+	eBus.closeChannels()
+
+	wg.Wait()
+	cancel()
+	assert.Equal(t, 14, et.count)
+}
+
+// closeChannels testing only fn, used to flush all events at test end
+func (eb *EventBus) closeChannels() {
+	eb.mut.Lock()
+	close(eb.pendingEvents)
+	close(eb.pendingTasks)
+	eb.mut.Unlock()
 }
