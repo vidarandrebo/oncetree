@@ -3,7 +3,7 @@ package eventbus
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"reflect"
 	"sync"
 )
@@ -15,17 +15,17 @@ type EventBus struct {
 	eventChanClosed bool
 	handlers        map[reflect.Type][]func(any)
 	mut             sync.RWMutex
-	logger          *log.Logger
+	logger          *slog.Logger
 }
 
-func New(logger *log.Logger) *EventBus {
+func New(logger *slog.Logger) *EventBus {
 	return &EventBus{
 		pendingTasks:    make(chan func(), 64),
 		taskChanClosed:  false,
 		pendingEvents:   make(chan any, 256),
 		eventChanClosed: false,
 		handlers:        make(map[reflect.Type][]func(any)),
-		logger:          logger,
+		logger:          logger.With(slog.Group("node", slog.String("module", "eventbus"))),
 	}
 }
 
@@ -84,7 +84,7 @@ func (eb *EventBus) handle(event any) {
 	eventType := reflect.TypeOf(event)
 	handlers, err := eb.eventHandlers(eventType)
 	if err != nil {
-		eb.logger.Println(err)
+		eb.logger.Error("event failed with", "err", err)
 		return
 	}
 	for _, handler := range handlers {
@@ -96,7 +96,7 @@ func (eb *EventBus) PushEvent(event any) {
 	eb.mut.RLock()
 	defer eb.mut.RUnlock()
 	if eb.eventChanClosed {
-		eb.logger.Println("[EventBus] - event discarded due to closed channel")
+		eb.logger.Error("event discarded due to closed channel")
 		return
 	}
 	eb.pendingEvents <- event
@@ -104,12 +104,12 @@ func (eb *EventBus) PushEvent(event any) {
 
 func (eb *EventBus) PushTask(task func()) {
 	if len(eb.pendingTasks) > 200 {
-		eb.logger.Println("[EventBus] - over 200 entries in task queue")
+		eb.logger.Warn("over 200 entries in task queue")
 	}
 	eb.mut.RLock()
 	defer eb.mut.RUnlock()
 	if eb.taskChanClosed {
-		eb.logger.Println("[EventBus] - task discarded due to closed channel")
+		eb.logger.Error("task discarded due to closed channel")
 		return
 	}
 	eb.pendingTasks <- task

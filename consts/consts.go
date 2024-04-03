@@ -8,4 +8,5 @@ const (
 	HeartbeatSendInterval   = 1 * time.Second
 	FailureDetectorInterval = 5 * time.Second
 	Fanout                  = 2
+	TimeFormat              = "[11:11:11]"
 )
