@@ -2,8 +2,10 @@ package oncetree
 
 import (
 	"context"
+	"io"
 	"log/slog"
 	"net"
+	"os"
 	"reflect"
 	"sync"
 
@@ -36,11 +38,17 @@ type Node struct {
 	stopChan        chan string
 }
 
-func NewNode(id string, rpcAddr string) *Node {
+func NewNode(id string, rpcAddr string, logFile io.Writer) *Node {
 	if id == "" {
 		id = uuid.New().String()
 	}
-	logger := slog.Default().With(slog.Group("node", slog.String("id", id)))
+	logHandlerOpts := slog.HandlerOptions{
+		Level: consts.LogLevel,
+	}
+	logWriter := io.MultiWriter(logFile, os.Stderr)
+	logHandler := slog.NewTextHandler(logWriter, &logHandlerOpts)
+
+	logger := slog.New(logHandler).With(slog.Group("node", slog.String("id", id)))
 	eventBus := eventbus.New(logger)
 	gorumsProvider := gorumsprovider.New(logger)
 	nodeManager := nodemanager.New(id, rpcAddr, consts.Fanout, logger, eventBus, gorumsProvider)
@@ -85,13 +93,20 @@ func (n *Node) startGorumsServer(addr string) {
 
 	listener, listenErr := net.Listen("tcp", addr)
 	if listenErr != nil {
-		n.logger.Error("could not create listener", "addr", addr, "err", listenErr)
+		n.logger.Error(
+			"could not create listener",
+			slog.String("addr", addr),
+			slog.Any("err", listenErr),
+		)
 		panic("listen failed")
 	}
 	go func() {
 		serveErr := n.gorumsServer.Serve(listener)
 		if serveErr != nil {
-			n.logger.Error("gorums server could not serve key value server", "err", serveErr)
+			n.logger.Error(
+				"gorums server could not serve key value server",
+				slog.Any("err", serveErr),
+			)
 			panic("serve failed")
 		}
 	}()

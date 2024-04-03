@@ -1,6 +1,7 @@
 package oncetree
 
 import (
+	"io"
 	"sync"
 )
 
@@ -26,7 +27,7 @@ func StartTestNodes(discardLogs bool) (map[string]*Node, *sync.WaitGroup) {
 	for _, id := range nodeIDs {
 		id := id
 		wg.Add(1)
-		newNode := NewNode(id, nodeMap[id])
+		newNode := NewNode(id, nodeMap[id], io.Discard)
 		mut.Lock()
 		nodes[id] = newNode
 		mut.Unlock()
@@ -48,7 +49,7 @@ func StartTestNode(discardLogs bool) (*Node, *sync.WaitGroup) {
 	var wg sync.WaitGroup
 	id := "10"
 	wg.Add(1)
-	node := NewNode(id, ":9090")
+	node := NewNode(id, ":9090", io.Discard)
 	go func() {
 		node.Run(":9080")
 		wg.Done()

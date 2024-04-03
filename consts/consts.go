@@ -1,6 +1,9 @@
 package consts
 
-import "time"
+import (
+	"log/slog"
+	"time"
+)
 
 const (
 	GorumsDialTimeout       = 3 * time.Second
@@ -9,4 +12,6 @@ const (
 	FailureDetectorInterval = 5 * time.Second
 	Fanout                  = 2
 	TimeFormat              = "[11:11:11]"
+	LogLevel                = slog.LevelDebug
+	LogFolder               = "logs"
 )

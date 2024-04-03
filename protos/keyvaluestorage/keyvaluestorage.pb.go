@@ -7,12 +7,13 @@
 package keyvaluestorage
 
 import (
+	reflect "reflect"
+	sync "sync"
+
 	_ "github.com/relab/gorums"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
-	reflect "reflect"
-	sync "sync"
 )
 
 const (
@@ -384,16 +385,18 @@ func file_protos_keyvaluestorage_keyvaluestorage_proto_rawDescGZIP() []byte {
 	return file_protos_keyvaluestorage_keyvaluestorage_proto_rawDescData
 }
 
-var file_protos_keyvaluestorage_keyvaluestorage_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
-var file_protos_keyvaluestorage_keyvaluestorage_proto_goTypes = []interface{}{
-	(*ReadRequest)(nil),     // 0: keyvaluestorage.ReadRequest
-	(*ReadResponse)(nil),    // 1: keyvaluestorage.ReadResponse
-	(*ReadAllResponse)(nil), // 2: keyvaluestorage.ReadAllResponse
-	(*WriteRequest)(nil),    // 3: keyvaluestorage.WriteRequest
-	(*GossipMessage)(nil),   // 4: keyvaluestorage.GossipMessage
-	nil,                     // 5: keyvaluestorage.ReadAllResponse.ValueEntry
-	(*emptypb.Empty)(nil),   // 6: google.protobuf.Empty
-}
+var (
+	file_protos_keyvaluestorage_keyvaluestorage_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+	file_protos_keyvaluestorage_keyvaluestorage_proto_goTypes  = []interface{}{
+		(*ReadRequest)(nil),     // 0: keyvaluestorage.ReadRequest
+		(*ReadResponse)(nil),    // 1: keyvaluestorage.ReadResponse
+		(*ReadAllResponse)(nil), // 2: keyvaluestorage.ReadAllResponse
+		(*WriteRequest)(nil),    // 3: keyvaluestorage.WriteRequest
+		(*GossipMessage)(nil),   // 4: keyvaluestorage.GossipMessage
+		nil,                     // 5: keyvaluestorage.ReadAllResponse.ValueEntry
+		(*emptypb.Empty)(nil),   // 6: google.protobuf.Empty
+	}
+)
 var file_protos_keyvaluestorage_keyvaluestorage_proto_depIdxs = []int32{
 	5, // 0: keyvaluestorage.ReadAllResponse.Value:type_name -> keyvaluestorage.ReadAllResponse.ValueEntry
 	3, // 1: keyvaluestorage.KeyValueStorage.Write:input_type -> keyvaluestorage.WriteRequest

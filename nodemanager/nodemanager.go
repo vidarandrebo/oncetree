@@ -239,13 +239,13 @@ func (nm *NodeManager) SendReady(nodeID string) {
 
 	gorumsID, ok := nm.GorumsID(nodeID)
 	if !ok {
-		//nm.logger.Printf("[NodeManager] - could not find gorums node with id %s", nodeID)
+		// nm.logger.Printf("[NodeManager] - could not find gorums node with id %s", nodeID)
 	}
 	node, ok := cfg.Node(gorumsID)
 	_, err := node.Ready(ctx, &nmprotos.ReadyMessage{NodeID: nm.id})
 	if err != nil {
-		//nm.logger.Println(err)
-		//nm.logger.Printf("[NodeManager] - failed to send ready message")
+		// nm.logger.Println(err)
+		// nm.logger.Printf("[NodeManager] - failed to send ready message")
 	}
 }
 
@@ -281,7 +281,7 @@ func (nm *NodeManager) NextJoinID() string {
 	defer nm.lastJoinID.Unlock(&lastJoinID)
 	children := nm.Children()
 	if len(children) == 0 {
-		//nm.logger.Panicln("[NodeManager] - cannot call NextJoinID when node has no children")
+		// nm.logger.Panicln("[NodeManager] - cannot call NextJoinID when node has no children")
 		panic("nextjoinId")
 	}
 	lastJoinPathIndex := 0

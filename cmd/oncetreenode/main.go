@@ -1,9 +1,13 @@
 package main
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 
 	"github.com/vidarandrebo/oncetree"
+	"github.com/vidarandrebo/oncetree/consts"
 )
 
 var (
@@ -33,7 +37,13 @@ func main() {
 		id := id
 		wg.Add(1)
 		go func() {
-			node := oncetree.NewNode(id, nodeMap[id])
+			fileName := filepath.Join(consts.LogFolder, fmt.Sprintf("%s.log", id))
+			file, err := os.OpenFile(fileName, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o666)
+			if err != nil {
+				panic(err)
+			}
+			defer file.Close()
+			node := oncetree.NewNode(id, nodeMap[id], file)
 			// node.SetNeighboursFromNodeMap(nodeIDs, nodeMap)
 			if id == "0" {
 				node.Run("")
