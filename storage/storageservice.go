@@ -36,8 +36,6 @@ func NewStorageService(id string, logger *slog.Logger, nodeManager *nodemanager.
 		eventBus:       eventBus,
 		configProvider: configProvider,
 	}
-	//	eventBus.RegisterHandler(reflect.TypeOf(nodemanager.NeighbourAddedEvent{}), func(e any) {
-	//	})
 	eventBus.RegisterHandler(reflect.TypeOf(nodemanager.NeighbourReadyEvent{}), func(e any) {
 		if event, ok := e.(nodemanager.NeighbourReadyEvent); ok {
 			ss.shareAll(event.NodeID)
@@ -144,8 +142,7 @@ func (ss *StorageService) sendGossip(originID string, key int64, values map[stri
 }
 
 func (ss *StorageService) Write(ctx gorums.ServerCtx, request *kvsprotos.WriteRequest) (response *emptypb.Empty, err error) {
-	ss.logger.Debug("RPC write", "key", request.GetKey(), "value", request.GetValue(), "writeID", request.GetWriteID())
-	// ss.logger.Printf("[StorageService] - write rpc, key = %d, value = %d, writeID = %d", request.GetKey(), request.GetValue(), request.GetWriteID())
+	ss.logger.Debug("RPC Write", "key", request.GetKey(), "value", request.GetValue(), "writeID", request.GetWriteID())
 	ts := ss.timestamp.Lock()
 	*ts++
 	writeTs := *ts
@@ -162,11 +159,8 @@ func (ss *StorageService) Write(ctx gorums.ServerCtx, request *kvsprotos.WriteRe
 		return &emptypb.Empty{}, nil
 	}
 	if ok && ss.hasValueToGossip(ss.id, valuesToGossip) {
-		ss.sendGossip(ss.id, request.GetKey(), valuesToGossip, writeTs, request.GetWriteID())
 		// only start gossip if write was successful
-		//ss.eventBus.PushTask(func() {
-		//ss.sendGossip(ss.id, request.GetKey(), valuesToGossip, writeTs, request.GetWriteID())
-		//})
+		ss.sendGossip(ss.id, request.GetKey(), valuesToGossip, writeTs, request.GetWriteID())
 	} else {
 		// ss.logger.Printf("write to key %v failed because existing value has higher timestamp", writeTs)
 	}
@@ -195,7 +189,14 @@ func (ss *StorageService) PrintState(ctx gorums.ServerCtx, request *emptypb.Empt
 }
 
 func (ss *StorageService) Gossip(ctx gorums.ServerCtx, request *kvsprotos.GossipMessage) (response *emptypb.Empty, err error) {
-	ss.logger.Debug("RPC gossip", "key", request.GetKey(), "value", request.GetValue(), "ts", request.GetTimestamp, "nodeID", request.GetNodeID(), "writeID", request.GetWriteID())
+	ss.logger.Debug(
+		"RPC Gossip",
+		slog.Int64("key", request.GetKey()),
+		slog.Int64("value", request.GetValue()),
+		slog.Int64("ts", request.GetTimestamp()),
+		slog.String("nodeID", request.GetNodeID()),
+		slog.Int64("writeID", request.GetWriteID()),
+	)
 	ctx.Release()
 	ts := ss.timestamp.Lock()
 	*ts++

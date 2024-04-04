@@ -45,7 +45,7 @@ loop:
 				eb.handle(event)
 			} else {
 				// break by closing channel, should be test only behaviour
-				fmt.Println("break after closed chan")
+				eb.logger.Warn("channel closed, exiting event handler loop")
 				break loop
 			}
 		case <-ctx.Done():
@@ -70,7 +70,7 @@ loop:
 				}
 			} else {
 				// break by closing channel, should be test only behaviour
-				fmt.Println("break after closed chan")
+				eb.logger.Warn("task channel closed, exiting task handler loop")
 				break loop
 			}
 		case <-ctx.Done():
@@ -84,7 +84,11 @@ func (eb *EventBus) handle(event any) {
 	eventType := reflect.TypeOf(event)
 	handlers, err := eb.eventHandlers(eventType)
 	if err != nil {
-		eb.logger.Error("event failed with", "err", err)
+		eb.logger.Error(
+			"handling of event failed",
+			slog.Any("event-type", eventType),
+			slog.Any("err", err),
+		)
 		return
 	}
 	for _, handler := range handlers {

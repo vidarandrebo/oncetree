@@ -148,7 +148,8 @@ func (n *Node) Stop(msg string) {
 }
 
 func (n *Node) Crash(ctx gorums.ServerCtx, request *emptypb.Empty) (response *emptypb.Empty, err error) {
-	n.Stop("[Node] -  crash RPC")
+	n.logger.Debug("RPC Crash")
+	n.Stop("crash RPC")
 	return &emptypb.Empty{}, nil
 }
 
@@ -180,6 +181,12 @@ func (n *Node) SetNeighboursFromNodeMap(nodeIDs []string, nodes map[string]strin
 		}
 
 	}
-	n.logger.Info("tree-info", "parent", n.nodeManager.Parent())
-	n.logger.Info("tree-info", "children", n.nodeManager.Children())
+	n.logger.Info(
+		"tree-info",
+		slog.Any("parent", n.nodeManager.Parent()),
+	)
+	n.logger.Info(
+		"tree-info",
+		slog.Any("children", n.nodeManager.Children()),
+	)
 }

@@ -94,7 +94,9 @@ func (fd *FailureDetector) timeout() {
 	for _, nodeID := range fd.nodes.Values() {
 		if !fd.alive.Contains(nodeID) && !fd.suspected.Contains(nodeID) {
 			fd.suspected.Add(nodeID)
-			fd.logger.Info("suspect", "node", nodeID)
+			fd.logger.Info(
+				"suspect",
+				slog.String("node", nodeID))
 			fd.Suspect(nodeID)
 		}
 	}
@@ -103,7 +105,10 @@ func (fd *FailureDetector) timeout() {
 }
 
 func (fd *FailureDetector) Heartbeat(ctx gorums.ServerCtx, request *fdprotos.HeartbeatMessage) {
-	// fd.logger.Printf("[FailureDetector] - received hb from %s", request.GetNodeID())
+	fd.logger.Debug(
+		"RPC Heartbeat",
+		slog.String("id", request.GetNodeID()),
+	)
 	fd.alive.Increment(request.GetNodeID(), 1)
 }
 

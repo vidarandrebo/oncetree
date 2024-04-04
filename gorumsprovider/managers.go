@@ -3,6 +3,7 @@ package gorumsprovider
 import (
 	"github.com/relab/gorums"
 	"github.com/vidarandrebo/oncetree/consts"
+	"github.com/vidarandrebo/oncetree/failuredetector/fdqspec"
 	fdprotos "github.com/vidarandrebo/oncetree/protos/failuredetector"
 	kvsprotos "github.com/vidarandrebo/oncetree/protos/keyvaluestorage"
 	"github.com/vidarandrebo/oncetree/protos/node"
@@ -53,4 +54,14 @@ func (m *managers) recreate() *managers {
 	m.kvsManager.Close()
 	m.nodeManager.Close()
 	return newGorumsManagers()
+}
+
+func (m *managers) newFDConfig(nodes map[string]uint32) (*fdprotos.Configuration, error) {
+	cfg, err := m.fdManager.NewConfiguration(
+		&fdqspec.QSpec{
+			NumNodes: len(nodes),
+		},
+		gorums.WithNodeMap(nodes),
+	)
+	return cfg, err
 }

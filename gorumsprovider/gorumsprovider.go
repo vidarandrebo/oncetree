@@ -5,7 +5,6 @@ import (
 	"sync"
 
 	"github.com/relab/gorums"
-	"github.com/vidarandrebo/oncetree/failuredetector/fdqspec"
 	"github.com/vidarandrebo/oncetree/nodemanager/nmqspec"
 	fdprotos "github.com/vidarandrebo/oncetree/protos/failuredetector"
 	kvsprotos "github.com/vidarandrebo/oncetree/protos/keyvaluestorage"
@@ -26,7 +25,7 @@ func New(logger *slog.Logger) *GorumsProvider {
 	return &GorumsProvider{
 		managers:       newGorumsManagers(),
 		configurations: newConfigurations(),
-		logger:         logger.With("module", "gorumsprovicer"),
+		logger:         logger.With(slog.Group("node", slog.String("module", "gorumsprovider"))),
 	}
 }
 
@@ -74,16 +73,11 @@ func (gp *GorumsProvider) SetNodes(nodes map[string]uint32) {
 	}
 
 	// FailureDetector
-	gp.configurations.fdConfig, err = gp.managers.fdManager.NewConfiguration(
-		&fdqspec.QSpec{
-			NumNodes: len(nodes),
-		},
-		gorums.WithNodeMap(nodes),
-	)
+	gp.configurations.fdConfig, err = gp.managers.newFDConfig(nodes)
 	if err != nil {
 		gp.logger.Error("failed to create failuredetector config", "err", err)
 	} else {
-		// gp.logger.Println("[GorumsProvider] - Created failuredetector config")
+		gp.logger.Debug("created failuredetector config")
 	}
 }
 
