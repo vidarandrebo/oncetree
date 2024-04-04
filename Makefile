@@ -6,6 +6,7 @@ gorums_go := $(proto_src:%.proto=%_gorums.pb.go)
 
 
 build: protos
+	- mkdir logs
 	go build -o bin/oncetreenode cmd/oncetreenode/main.go
 	go build -o bin/oncetreeclient cmd/oncetreeclient/main.go
 

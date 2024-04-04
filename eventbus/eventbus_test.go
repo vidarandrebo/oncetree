@@ -2,7 +2,7 @@ package eventbus
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"reflect"
 	"sync"
 	"testing"
@@ -17,7 +17,7 @@ func TestEventBus_Handle(t *testing.T) {
 	e := testEvent{}
 	var wg sync.WaitGroup
 	wg.Add(1)
-	eBus := New(log.Default())
+	eBus := New(slog.Default())
 	go eBus.Run(ctx, &wg)
 	eBus.RegisterHandler(reflect.TypeOf(testEvent{}), func(event any) {
 		et.Increment()
@@ -36,7 +36,7 @@ func TestEventBus_Handle_ManyHandlers(t *testing.T) {
 	e := testEvent{}
 	var wg sync.WaitGroup
 	wg.Add(1)
-	eBus := New(log.Default())
+	eBus := New(slog.Default())
 	go eBus.Run(ctx, &wg)
 	eBus.RegisterHandler(reflect.TypeOf(testEvent{}), func(any) {
 		et.Increment()
@@ -90,7 +90,7 @@ func TestEventBus_Handle_WithData(t *testing.T) {
 	}
 	var wg sync.WaitGroup
 	wg.Add(1)
-	eBus := New(log.Default())
+	eBus := New(slog.Default())
 	go eBus.Run(ctx, &wg)
 
 	eBus.RegisterHandler(reflect.TypeOf(testEventWithData{}), func(e any) {
@@ -111,7 +111,7 @@ func TestEventBus_HandleOneTask(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	var wg sync.WaitGroup
 	wg.Add(1)
-	eBus := New(log.Default())
+	eBus := New(slog.Default())
 	go eBus.Run(ctx, &wg)
 
 	et := testEventTarget{count: 10}
@@ -130,7 +130,7 @@ func TestEventBus_HandleMultipleTasks(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	var wg sync.WaitGroup
 	wg.Add(1)
-	eBus := New(log.Default())
+	eBus := New(slog.Default())
 	go eBus.Run(ctx, &wg)
 
 	var mut sync.Mutex

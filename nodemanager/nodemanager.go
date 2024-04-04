@@ -4,7 +4,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"reflect"
 	"slices"
 	"sync"
@@ -33,12 +33,12 @@ type NodeManager struct {
 	nextGorumsID   *mutex.RWMutex[uint32]
 	lastJoinID     *mutex.RWMutex[string]
 	joinMut        sync.Mutex
-	logger         *log.Logger
+	logger         *slog.Logger
 	eventBus       *eventbus.EventBus
 	gorumsProvider *gorumsprovider.GorumsProvider
 }
 
-func New(id string, address string, fanout int, logger *log.Logger, eventBus *eventbus.EventBus, gorumsProvider *gorumsprovider.GorumsProvider) *NodeManager {
+func New(id string, address string, fanout int, logger *slog.Logger, eventBus *eventbus.EventBus, gorumsProvider *gorumsprovider.GorumsProvider) *NodeManager {
 	nm := &NodeManager{
 		id:             id,
 		address:        address,
@@ -46,7 +46,7 @@ func New(id string, address string, fanout int, logger *log.Logger, eventBus *ev
 		neighbours:     maps.NewConcurrentMap[string, *Neighbour](),
 		nextGorumsID:   mutex.New[uint32](0),
 		lastJoinID:     mutex.New(""),
-		logger:         logger,
+		logger:         logger.With(slog.Group("node", slog.String("module", "nodemanager"))),
 		eventBus:       eventBus,
 		gorumsProvider: gorumsProvider,
 	}
@@ -69,11 +69,11 @@ func (nm *NodeManager) HandleFailureEvent(nodeID string) {
 }
 
 func (nm *NodeManager) HandleNeighbourAddedEvent(e NeighbourAddedEvent) {
-	nm.logger.Printf("[NodeManager] - added neighbour %s", e.NodeID)
+	nm.logger.Info("added neighbour", "id", e.NodeID)
 }
 
 func (nm *NodeManager) HandleNeighbourRemovedEvent(e NeighbourRemovedEvent) {
-	nm.logger.Printf("[NodeManager] - removed neighbour %s", e.NodeID)
+	nm.logger.Info("removed neighbour", "id", e.NodeID)
 }
 
 func (nm *NodeManager) Neighbours() []maps.KeyValuePair[string, *Neighbour] {
@@ -214,8 +214,11 @@ func (nm *NodeManager) SendJoin(knownAddr string) {
 		}
 		response, err := node.Join(ctx, joinRequest)
 		if err != nil {
-			nm.logger.Println(err)
-			nm.logger.Fatalf("[NodeManager] - failed to join node with address %s", knownAddr)
+			nm.logger.Error("join failed",
+				slog.Any("err", err),
+				slog.String("address", knownAddr),
+			)
+			panic("join failed")
 		}
 
 		nm.clearTmp()
@@ -239,17 +242,26 @@ func (nm *NodeManager) SendReady(nodeID string) {
 
 	gorumsID, ok := nm.GorumsID(nodeID)
 	if !ok {
-		nm.logger.Printf("[NodeManager] - could not find gorums node with id %s", nodeID)
+		nm.logger.Error(
+			"failed to lookup gorumsID",
+			slog.String("id", nodeID),
+		)
 	}
 	node, ok := cfg.Node(gorumsID)
 	_, err := node.Ready(ctx, &nmprotos.ReadyMessage{NodeID: nm.id})
 	if err != nil {
-		nm.logger.Println(err)
-		nm.logger.Printf("[NodeManager] - failed to send ready message")
+		nm.logger.Error(
+			"failed to send ready message",
+			slog.Any("err", err))
 	}
 }
 
 func (nm *NodeManager) Join(ctx gorums.ServerCtx, request *nmprotos.JoinRequest) (response *nmprotos.JoinResponse, err error) {
+	nm.logger.Debug(
+		"RPC Join",
+		slog.String("id", request.GetNodeID()),
+		slog.String("address", request.GetAddress()),
+	)
 	nm.joinMut.Lock()
 	defer nm.joinMut.Unlock()
 	response = &nmprotos.JoinResponse{
@@ -281,7 +293,8 @@ func (nm *NodeManager) NextJoinID() string {
 	defer nm.lastJoinID.Unlock(&lastJoinID)
 	children := nm.Children()
 	if len(children) == 0 {
-		nm.logger.Panicln("[NodeManager] - cannot call NextJoinID when node has no children")
+		nm.logger.Error("cannot call NextJoinID when node has no children")
+		panic("nextjoinId")
 	}
 	lastJoinPathIndex := 0
 	for i, child := range children {
@@ -299,7 +312,12 @@ func (nm *NodeManager) NextJoinID() string {
 	return *lastJoinID
 }
 
+// Ready is used to signal to the parent that the newly joined node has created a gorums config and is ready to participate in the protocol. This might get handled a different way later...
 func (nm *NodeManager) Ready(ctx gorums.ServerCtx, request *nmprotos.ReadyMessage) (response *emptypb.Empty, err error) {
+	nm.logger.Debug(
+		"RPC Ready",
+		slog.String("id", request.GetNodeID()),
+	)
 	nm.eventBus.PushEvent(NewNeighbourReadyEvent(request.GetNodeID()))
 	return &emptypb.Empty{}, nil
 }

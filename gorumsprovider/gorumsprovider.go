@@ -1,11 +1,10 @@
 package gorumsprovider
 
 import (
-	"log"
+	"log/slog"
 	"sync"
 
 	"github.com/relab/gorums"
-	"github.com/vidarandrebo/oncetree/failuredetector/fdqspec"
 	"github.com/vidarandrebo/oncetree/nodemanager/nmqspec"
 	fdprotos "github.com/vidarandrebo/oncetree/protos/failuredetector"
 	kvsprotos "github.com/vidarandrebo/oncetree/protos/keyvaluestorage"
@@ -19,14 +18,14 @@ type GorumsProvider struct {
 	managers       *managers
 	configurations *configurations
 	mut            sync.RWMutex
-	logger         *log.Logger
+	logger         *slog.Logger
 }
 
-func New(logger *log.Logger) *GorumsProvider {
+func New(logger *slog.Logger) *GorumsProvider {
 	return &GorumsProvider{
 		managers:       newGorumsManagers(),
 		configurations: newConfigurations(),
-		logger:         logger,
+		logger:         logger.With(slog.Group("node", slog.String("module", "gorumsprovider"))),
 	}
 }
 
@@ -45,8 +44,7 @@ func (gp *GorumsProvider) SetNodes(nodes map[string]uint32) {
 	)
 
 	if err != nil {
-		gp.logger.Println(err)
-		gp.logger.Println("[GorumsProvider] - Failed to create nodemanager config")
+		gp.logger.Error("failed to create nodemanager config", "err", err)
 	} else {
 		// gp.logger.Println("[GorumsProvider] - Created nodemanager config")
 	}
@@ -56,8 +54,7 @@ func (gp *GorumsProvider) SetNodes(nodes map[string]uint32) {
 		gorums.WithNodeMap(nodes),
 	)
 	if err != nil {
-		gp.logger.Println(err)
-		gp.logger.Println("[GorumsProvider] - Failed to create node config")
+		gp.logger.Error("failed to create node config", "err", err)
 	} else {
 		// gp.logger.Println("[GorumsProvider] - Created node config")
 	}
@@ -70,24 +67,17 @@ func (gp *GorumsProvider) SetNodes(nodes map[string]uint32) {
 		gorums.WithNodeMap(nodes),
 	)
 	if err != nil {
-		gp.logger.Println(err)
-		gp.logger.Println("[GorumsProvider] - Failed to create storage config")
+		gp.logger.Error("failed to create storage config", "err", err)
 	} else {
 		// gp.logger.Println("[GorumsProvider] - Created storage config")
 	}
 
 	// FailureDetector
-	gp.configurations.fdConfig, err = gp.managers.fdManager.NewConfiguration(
-		&fdqspec.QSpec{
-			NumNodes: len(nodes),
-		},
-		gorums.WithNodeMap(nodes),
-	)
+	gp.configurations.fdConfig, err = gp.managers.newFDConfig(nodes)
 	if err != nil {
-		gp.logger.Println(err)
-		gp.logger.Println("[GorumsProvider] - Failed to create failuredetector config")
+		gp.logger.Error("failed to create failuredetector config", "err", err)
 	} else {
-		// gp.logger.Println("[GorumsProvider] - Created failuredetector config")
+		gp.logger.Debug("created failuredetector config")
 	}
 }
 

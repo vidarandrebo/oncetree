@@ -2,7 +2,7 @@ package storage
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"reflect"
 
 	"github.com/vidarandrebo/oncetree/gorumsprovider"
@@ -19,25 +19,23 @@ import (
 type StorageService struct {
 	id             string
 	storage        KeyValueStorage
-	logger         *log.Logger
+	logger         *slog.Logger
 	timestamp      *mutex.RWMutex[int64]
 	nodeManager    *nodemanager.NodeManager
 	eventBus       *eventbus.EventBus
 	configProvider gorumsprovider.StorageConfigProvider
 }
 
-func NewStorageService(id string, logger *log.Logger, nodeManager *nodemanager.NodeManager, eventBus *eventbus.EventBus, configProvider gorumsprovider.StorageConfigProvider) *StorageService {
+func NewStorageService(id string, logger *slog.Logger, nodeManager *nodemanager.NodeManager, eventBus *eventbus.EventBus, configProvider gorumsprovider.StorageConfigProvider) *StorageService {
 	ss := &StorageService{
 		id:             id,
-		logger:         logger,
+		logger:         logger.With(slog.Group("node", slog.String("module", "storageservice"))),
 		storage:        *NewKeyValueStorage(),
 		nodeManager:    nodeManager,
 		timestamp:      mutex.New[int64](0),
 		eventBus:       eventBus,
 		configProvider: configProvider,
 	}
-	//	eventBus.RegisterHandler(reflect.TypeOf(nodemanager.NeighbourAddedEvent{}), func(e any) {
-	//	})
 	eventBus.RegisterHandler(reflect.TypeOf(nodemanager.NeighbourReadyEvent{}), func(e any) {
 		if event, ok := e.(nodemanager.NeighbourReadyEvent); ok {
 			ss.shareAll(event.NodeID)
@@ -47,16 +45,18 @@ func NewStorageService(id string, logger *log.Logger, nodeManager *nodemanager.N
 }
 
 func (ss *StorageService) shareAll(nodeID string) {
-	ss.logger.Printf("[StorageService] - sharing all values with %s", nodeID)
+	ss.logger.Info("sharing all values", "id", nodeID)
 	neighbour, ok := ss.nodeManager.Neighbour(nodeID)
 	if !ok {
-		ss.logger.Printf("[StorageService] - did not find neighbour %v", nodeID)
+		ss.logger.Error("did not find neighbour", "id", nodeID)
 		return
 	}
 	gorumsConfig := ss.configProvider.StorageConfig()
 	node, ok := gorumsConfig.Node(neighbour.GorumsID)
 	if !ok {
-		ss.logger.Printf("[StorageService] - did not find node %d in gorums config", neighbour.GorumsID)
+		ss.logger.Error(
+			"did not find node in gorums config",
+			slog.Uint64("id", uint64(neighbour.GorumsID)))
 		return
 	}
 	for _, key := range ss.storage.Keys().Values() {
@@ -65,7 +65,10 @@ func (ss *StorageService) shareAll(nodeID string) {
 		value, err := ss.storage.ReadValueExceptNode(nodeID, key)
 		ss.timestamp.RUnlock(&tsRef)
 		if err != nil {
-			ss.logger.Println(err)
+			ss.logger.Error(
+				"failed to read from storage",
+				slog.Int64("key", key),
+				slog.Any("err", err))
 			continue
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
@@ -77,32 +80,47 @@ func (ss *StorageService) shareAll(nodeID string) {
 		}
 		_, err = node.Gossip(ctx, request)
 		if err != nil {
-			ss.logger.Println(err)
+			ss.logger.Error(
+				"gossip failed",
+				slog.Any("err", err))
 		}
 		cancel()
 	}
-	ss.logger.Printf("[StorageService] - completed sharing values with node %v", nodeID)
+	ss.logger.Info(
+		"completed sharing values",
+		slog.String("id", nodeID))
 }
 
 func (ss *StorageService) sendGossip(originID string, key int64, values map[string]int64, ts int64, writeID int64) {
+	ss.logger.Debug(
+		"sendGossip",
+		slog.String("originID", originID),
+		slog.Int64("key", key),
+		slog.Int64("ts", ts),
+		slog.Int64("writeID", writeID),
+	)
 	sent := false
-	// ss.logger.Printf("[StorageService] - sendGossip, key = %d, origin = %s, writeID = %d", key, originID, writeID)
 	gorumsConfig := ss.configProvider.StorageConfig()
 	for _, gorumsNode := range gorumsConfig.Nodes() {
 		nodeID, ok := ss.nodeManager.NodeID(gorumsNode.ID())
 		if !ok {
-			ss.logger.Println("[StorageService] - node lookup failed")
+			ss.logger.Error(
+				"node lookup failed",
+				slog.Uint64("gorumsID", uint64(gorumsNode.ID())),
+			)
+
 			continue
 		}
 		// skip returning to originID and sending to self.
 		if nodeID == originID {
-			// ss.logger.Printf("[StorageService] - node is origin, writeID = %d", writeID)
+			ss.logger.Debug(
+				"target is origin, skipping gossip",
+				slog.String("id", nodeID))
 			continue
 		}
 		if nodeID == ss.id {
-			ss.logger.Panicf("[StorageService] - node is self, writeID = %d", writeID)
+			ss.logger.Error("target is self, gorums configuration error")
 		}
-		// value, err := ss.storage.ReadValueExceptNode(nodeID, key)
 		ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
 		_, err := gorumsNode.Gossip(ctx, &kvsprotos.GossipMessage{
 			NodeID:    ss.id,
@@ -114,7 +132,7 @@ func (ss *StorageService) sendGossip(originID string, key int64, values map[stri
 		)
 		sent = true
 		if err != nil {
-			ss.logger.Panicf("[StorageService] - Gossip rpc of writeID = %d to nodeID = %s err = %v", writeID, nodeID, err)
+			// ss.logger.Panicf("[StorageService] - Gossip rpc of writeID = %d to nodeID = %s err = %v", writeID, nodeID, err)
 		}
 		cancel()
 	}
@@ -124,7 +142,7 @@ func (ss *StorageService) sendGossip(originID string, key int64, values map[stri
 }
 
 func (ss *StorageService) Write(ctx gorums.ServerCtx, request *kvsprotos.WriteRequest) (response *emptypb.Empty, err error) {
-	// ss.logger.Printf("[StorageService] - write rpc, key = %d, value = %d, writeID = %d", request.GetKey(), request.GetValue(), request.GetWriteID())
+	ss.logger.Debug("RPC Write", "key", request.GetKey(), "value", request.GetValue(), "writeID", request.GetWriteID())
 	ts := ss.timestamp.Lock()
 	*ts++
 	writeTs := *ts
@@ -137,17 +155,14 @@ func (ss *StorageService) Write(ctx gorums.ServerCtx, request *kvsprotos.WriteRe
 	ss.timestamp.Unlock(&ts)
 
 	if err != nil {
-		ss.logger.Panicln(err)
+		// ss.logger.Panicln(err)
 		return &emptypb.Empty{}, nil
 	}
 	if ok && ss.hasValueToGossip(ss.id, valuesToGossip) {
-		ss.sendGossip(ss.id, request.GetKey(), valuesToGossip, writeTs, request.GetWriteID())
 		// only start gossip if write was successful
-		//ss.eventBus.PushTask(func() {
-		//ss.sendGossip(ss.id, request.GetKey(), valuesToGossip, writeTs, request.GetWriteID())
-		//})
+		ss.sendGossip(ss.id, request.GetKey(), valuesToGossip, writeTs, request.GetWriteID())
 	} else {
-		ss.logger.Printf("write to key %v failed because existing value has higher timestamp", writeTs)
+		// ss.logger.Printf("write to key %v failed because existing value has higher timestamp", writeTs)
 	}
 	return &emptypb.Empty{}, nil
 }
@@ -169,11 +184,19 @@ func (ss *StorageService) ReadAll(ctx gorums.ServerCtx, request *kvsprotos.ReadR
 }
 
 func (ss *StorageService) PrintState(ctx gorums.ServerCtx, request *emptypb.Empty) (response *emptypb.Empty, err error) {
-	ss.logger.Println(ss.storage.data)
+	// ss.logger.Println(ss.storage.data)
 	return &emptypb.Empty{}, nil
 }
 
 func (ss *StorageService) Gossip(ctx gorums.ServerCtx, request *kvsprotos.GossipMessage) (response *emptypb.Empty, err error) {
+	ss.logger.Debug(
+		"RPC Gossip",
+		slog.Int64("key", request.GetKey()),
+		slog.Int64("value", request.GetValue()),
+		slog.Int64("ts", request.GetTimestamp()),
+		slog.String("nodeID", request.GetNodeID()),
+		slog.Int64("writeID", request.GetWriteID()),
+	)
 	ctx.Release()
 	ts := ss.timestamp.Lock()
 	*ts++
@@ -187,7 +210,9 @@ func (ss *StorageService) Gossip(ctx gorums.ServerCtx, request *kvsprotos.Gossip
 	ss.timestamp.Unlock(&ts)
 
 	if err != nil {
-		ss.logger.Panicf("[StorageService]177 - %v", err)
+		ss.logger.Warn("failed to retrieve values to gossip",
+			slog.Int64("key", request.GetKey()),
+			slog.String("id", request.GetNodeID()))
 		return &emptypb.Empty{}, nil
 	}
 

@@ -2,8 +2,8 @@ package oncetree
 
 import (
 	"context"
-	"fmt"
-	"log"
+	"io"
+	"log/slog"
 	"net"
 	"os"
 	"reflect"
@@ -30,7 +30,7 @@ type Node struct {
 	rpcAddr         string
 	gorumsServer    *gorums.Server
 	nodeManager     *nodemanager.NodeManager
-	logger          *log.Logger
+	logger          *slog.Logger
 	timestamp       int64
 	failureDetector *failuredetector.FailureDetector
 	storageService  *storage.StorageService
@@ -38,11 +38,17 @@ type Node struct {
 	stopChan        chan string
 }
 
-func NewNode(id string, rpcAddr string) *Node {
+func NewNode(id string, rpcAddr string, logFile io.Writer) *Node {
 	if id == "" {
 		id = uuid.New().String()
 	}
-	logger := log.New(os.Stderr, fmt.Sprintf("[NodeID: %s] ", id), log.Ltime|log.Lmsgprefix)
+	logHandlerOpts := slog.HandlerOptions{
+		Level: consts.LogLevel,
+	}
+	logWriter := io.MultiWriter(logFile, os.Stderr)
+	logHandler := slog.NewTextHandler(logWriter, &logHandlerOpts)
+
+	logger := slog.New(logHandler).With(slog.Group("node", slog.String("id", id)))
 	eventBus := eventbus.New(logger)
 	gorumsProvider := gorumsprovider.New(logger)
 	nodeManager := nodemanager.New(id, rpcAddr, consts.Fanout, logger, eventBus, gorumsProvider)
@@ -54,7 +60,7 @@ func NewNode(id string, rpcAddr string) *Node {
 		id:              id,
 		eventbus:        eventBus,
 		nodeManager:     nodeManager,
-		logger:          logger,
+		logger:          logger.With(slog.Group("node", slog.String("module", "node"))),
 		failureDetector: failureDetector,
 		storageService:  storageService,
 		timestamp:       0,
@@ -74,7 +80,7 @@ func (n *Node) setupEventHandlers() {
 }
 
 func (n *Node) nodeFailedHandler(e failuredetector.NodeFailedEvent) {
-	n.logger.Printf("node with id %s has failed", e.NodeID)
+	// n.logger.Printf("node with id %s has failed", e.NodeID)
 }
 
 func (n *Node) startGorumsServer(addr string) {
@@ -87,12 +93,21 @@ func (n *Node) startGorumsServer(addr string) {
 
 	listener, listenErr := net.Listen("tcp", addr)
 	if listenErr != nil {
-		n.logger.Panicf("[Node] - could not listen to address %v", addr)
+		n.logger.Error(
+			"could not create listener",
+			slog.String("addr", addr),
+			slog.Any("err", listenErr),
+		)
+		panic("listen failed")
 	}
 	go func() {
 		serveErr := n.gorumsServer.Serve(listener)
 		if serveErr != nil {
-			n.logger.Panicf("[Node] - gorums server could not serve key value server")
+			n.logger.Error(
+				"gorums server could not serve key value server",
+				slog.Any("err", serveErr),
+			)
+			panic("serve failed")
 		}
 	}()
 }
@@ -118,14 +133,14 @@ mainLoop:
 	for {
 		select {
 		case nodeExitMessage = <-n.stopChan:
-			n.logger.Println("[Node] - Main loop stopped manually via stop channel")
+			n.logger.Info("main loop stopped manually via stop channel")
 			cancel()
 			break mainLoop
 		}
 	}
 	wg.Wait()
 	n.gorumsServer.Stop()
-	n.logger.Printf("[Node] - Exiting after message \"%s\" on stop channel", nodeExitMessage)
+	n.logger.Info("exiting", "msg", nodeExitMessage)
 }
 
 func (n *Node) Stop(msg string) {
@@ -133,7 +148,8 @@ func (n *Node) Stop(msg string) {
 }
 
 func (n *Node) Crash(ctx gorums.ServerCtx, request *emptypb.Empty) (response *emptypb.Empty, err error) {
-	n.Stop("[Node] -  crash RPC")
+	n.logger.Debug("RPC Crash")
+	n.Stop("crash RPC")
 	return &emptypb.Empty{}, nil
 }
 
@@ -165,6 +181,12 @@ func (n *Node) SetNeighboursFromNodeMap(nodeIDs []string, nodes map[string]strin
 		}
 
 	}
-	n.logger.Printf("[Node] - parent: %v", n.nodeManager.Parent())
-	n.logger.Printf("[Node] - children: %v", n.nodeManager.Children())
+	n.logger.Info(
+		"tree-info",
+		slog.Any("parent", n.nodeManager.Parent()),
+	)
+	n.logger.Info(
+		"tree-info",
+		slog.Any("children", n.nodeManager.Children()),
+	)
 }

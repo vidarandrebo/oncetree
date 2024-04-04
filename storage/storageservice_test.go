@@ -2,7 +2,7 @@ package storage_test
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -44,6 +44,7 @@ var (
 		"8": ":9088",
 		"9": ":9089",
 	}
+	logger = slog.Default().With(slog.Group("node", slog.String("module", "storage")))
 )
 
 // TestStorageService_Write tests writing the same value to all nodes, and checking that the values has propagated to all nodes.
@@ -140,9 +141,9 @@ func createKeyValueStorageConfig() (*kvsprotos.Manager, *kvsprotos.Configuration
 
 func BenchmarkStorageService_Write(t *testing.B) {
 	testNodes, wg := oncetree.StartTestNodes(true)
-	log.Println("[Bench] - sleep for dial timeout before starting to write")
+	logger.Info("sleep for dial timeout before starting to write")
 	time.Sleep(consts.RPCContextTimeout * 2)
-	log.Println("[Bench] - starting write")
+	logger.Info("starting write")
 	_, cfg := createKeyValueStorageConfig()
 	nodes := cfg.Nodes()
 
@@ -157,9 +158,9 @@ func BenchmarkStorageService_Write(t *testing.B) {
 		}
 		// log.Printf("[Bench] %d", i)
 	}
-	log.Println("[Bench] - sleep for rpc context timeout")
+	logger.Info("sleep for rpc context timeout")
 	time.Sleep(consts.RPCContextTimeout)
-	log.Println("[Bench] - benchmark done")
+	logger.Info("benchmark done")
 
 	for _, node := range testNodes {
 		node.Stop("stopped by test")

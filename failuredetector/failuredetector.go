@@ -2,7 +2,7 @@ package failuredetector
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"reflect"
 	"sync"
 	"time"
@@ -26,13 +26,13 @@ type FailureDetector struct {
 	nodes          *hashset.ConcurrentHashSet[string]
 	alive          *maps.ConcurrentIntegerMap[string]
 	suspected      *hashset.ConcurrentHashSet[string]
-	logger         *log.Logger
+	logger         *slog.Logger
 	nodeManager    *nodemanager.NodeManager
 	eventBus       *eventbus.EventBus
 	configProvider gorumsprovider.FDConfigProvider
 }
 
-func New(id string, logger *log.Logger, nodeManager *nodemanager.NodeManager, eventBus *eventbus.EventBus, configProvider gorumsprovider.FDConfigProvider) *FailureDetector {
+func New(id string, logger *slog.Logger, nodeManager *nodemanager.NodeManager, eventBus *eventbus.EventBus, configProvider gorumsprovider.FDConfigProvider) *FailureDetector {
 	fd := &FailureDetector{
 		id:             id,
 		nodes:          hashset.New[string](),
@@ -40,7 +40,7 @@ func New(id string, logger *log.Logger, nodeManager *nodemanager.NodeManager, ev
 		suspected:      hashset.New[string](),
 		nodeManager:    nodeManager,
 		eventBus:       eventBus,
-		logger:         logger,
+		logger:         logger.With(slog.Group("node", slog.String("module", "failuredetector"))),
 		configProvider: configProvider,
 	}
 	eventBus.RegisterHandler(
@@ -86,7 +86,7 @@ mainLoop:
 			fd.sendHeartbeat()
 		}
 	}
-	fd.logger.Println("[FailureDetector] - exiting")
+	fd.logger.Info("closing")
 	wg.Done()
 }
 
@@ -94,7 +94,9 @@ func (fd *FailureDetector) timeout() {
 	for _, nodeID := range fd.nodes.Values() {
 		if !fd.alive.Contains(nodeID) && !fd.suspected.Contains(nodeID) {
 			fd.suspected.Add(nodeID)
-			fd.logger.Printf("[FailureDetector] suspect node %v", nodeID)
+			fd.logger.Info(
+				"suspect",
+				slog.String("node", nodeID))
 			fd.Suspect(nodeID)
 		}
 	}
@@ -103,7 +105,10 @@ func (fd *FailureDetector) timeout() {
 }
 
 func (fd *FailureDetector) Heartbeat(ctx gorums.ServerCtx, request *fdprotos.HeartbeatMessage) {
-	// fd.logger.Printf("[FailureDetector] - received hb from %s", request.GetNodeID())
+	fd.logger.Debug(
+		"RPC Heartbeat",
+		slog.String("id", request.GetNodeID()),
+	)
 	fd.alive.Increment(request.GetNodeID(), 1)
 }
 
