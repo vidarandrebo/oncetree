@@ -21,9 +21,11 @@ message WriteRequest {
 message GossipMessage {
   string NodeID = 1;
   int64 Key = 2;
-  int64 Value = 3;
-  int64 Timestamp = 4;
-  int64 WriteID = 5;
+  int64 AggValue = 3;
+  int64 AggTimestamp = 4;
+  int64 LocalValue = 5;
+  int64 LocalTimestamp = 6;
+  int64 WriteID = 7;
 }
 
 service KeyValueStorage {

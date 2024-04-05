@@ -44,7 +44,7 @@ var (
 		"8": ":9088",
 		"9": ":9089",
 	}
-	logger = slog.Default().With(slog.Group("node", slog.String("module", "storage")))
+	logger = slog.Default().With(slog.Group("node", slog.String("module", "storage_test")))
 )
 
 // TestStorageService_Write tests writing the same value to all nodes, and checking that the values has propagated to all nodes.
@@ -149,7 +149,7 @@ func BenchmarkStorageService_Write(t *testing.B) {
 
 	for i := 0; i < t.N; i++ {
 		_, err := nodes[i%len(nodes)].Write(context.Background(), &kvsprotos.WriteRequest{
-			Key:     int64(i),
+			Key:     int64(i % 1234),
 			Value:   int64(i),
 			WriteID: int64(i),
 		})

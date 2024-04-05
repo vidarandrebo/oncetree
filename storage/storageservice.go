@@ -73,10 +73,10 @@ func (ss *StorageService) shareAll(nodeID string) {
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
 		request := &kvsprotos.GossipMessage{
-			NodeID:    ss.id,
-			Key:       key,
-			Value:     value,
-			Timestamp: ts,
+			NodeID:       ss.id,
+			Key:          key,
+			AggValue:     value,
+			AggTimestamp: ts,
 		}
 		_, err = node.Gossip(ctx, request)
 		if err != nil {
@@ -91,7 +91,7 @@ func (ss *StorageService) shareAll(nodeID string) {
 		slog.String("id", nodeID))
 }
 
-func (ss *StorageService) sendGossip(originID string, key int64, values map[string]int64, ts int64, writeID int64) {
+func (ss *StorageService) sendGossip(originID string, key int64, values map[string]int64, ts int64, localValue TimestampedValue, writeID int64) {
 	ss.logger.Debug(
 		"sendGossip",
 		slog.String("originID", originID),
@@ -123,11 +123,13 @@ func (ss *StorageService) sendGossip(originID string, key int64, values map[stri
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
 		_, err := gorumsNode.Gossip(ctx, &kvsprotos.GossipMessage{
-			NodeID:    ss.id,
-			Key:       key,
-			Value:     values[nodeID],
-			Timestamp: ts,
-			WriteID:   writeID,
+			NodeID:         ss.id,
+			Key:            key,
+			AggValue:       values[nodeID],
+			AggTimestamp:   ts,
+			LocalValue:     localValue.Value,
+			LocalTimestamp: localValue.Timestamp,
+			WriteID:        writeID,
 		},
 		)
 		sent = true
@@ -141,28 +143,42 @@ func (ss *StorageService) sendGossip(originID string, key int64, values map[stri
 	}
 }
 
+// Write RPC is used to set the local value at a given key for a single node
 func (ss *StorageService) Write(ctx gorums.ServerCtx, request *kvsprotos.WriteRequest) (response *emptypb.Empty, err error) {
 	ss.logger.Debug("RPC Write", "key", request.GetKey(), "value", request.GetValue(), "writeID", request.GetWriteID())
 	ts := ss.timestamp.Lock()
 	*ts++
 	writeTs := *ts
 	ok := ss.storage.WriteValue(ss.id, request.GetKey(), request.GetValue(), writeTs)
-	valuesToGossip, err := ss.storage.GetGossipValues(
+
+	// does not user storage.ReadLocalValue, since the aggregated value IS the local value in this case, and self's local value cannot be found using ReadLocalValue
+	localValue, readValueErr := ss.storage.ReadValueFromNode(ss.id, request.GetKey())
+	valuesToGossip, gossipValueErr := ss.storage.GossipValues(
 		request.GetKey(),
 		ss.nodeManager.NeighbourIDs(),
 	)
 	// both the write and read must happen while ts mutex is locked to avoid inconsistencies
 	ss.timestamp.Unlock(&ts)
 
-	if err != nil {
-		// ss.logger.Panicln(err)
+	if gossipValueErr != nil {
+		ss.logger.Warn("failed to retrieve values to gossip",
+			slog.Any("err", gossipValueErr),
+			slog.Int64("key", request.GetKey()))
 		return &emptypb.Empty{}, nil
 	}
+	if readValueErr != nil {
+		ss.logger.Debug("node does not have local value for this key",
+			slog.Int64("key", request.GetKey()))
+	}
+
 	if ok && ss.hasValueToGossip(ss.id, valuesToGossip) {
 		// only start gossip if write was successful
-		ss.sendGossip(ss.id, request.GetKey(), valuesToGossip, writeTs, request.GetWriteID())
+		ss.sendGossip(ss.id, request.GetKey(), valuesToGossip, writeTs, TimestampedValue{Value: localValue, Timestamp: writeTs}, request.GetWriteID())
 	} else {
-		// ss.logger.Printf("write to key %v failed because existing value has higher timestamp", writeTs)
+		ss.logger.Warn(
+			"write failed because existing value has higher timestamp",
+			slog.Int64("key", request.GetKey()),
+			slog.Int64("ts", writeTs))
 	}
 	return &emptypb.Empty{}, nil
 }
@@ -192,8 +208,8 @@ func (ss *StorageService) Gossip(ctx gorums.ServerCtx, request *kvsprotos.Gossip
 	ss.logger.Debug(
 		"RPC Gossip",
 		slog.Int64("key", request.GetKey()),
-		slog.Int64("value", request.GetValue()),
-		slog.Int64("ts", request.GetTimestamp()),
+		slog.Int64("value", request.GetAggValue()),
+		slog.Int64("ts", request.GetAggTimestamp()),
 		slog.String("nodeID", request.GetNodeID()),
 		slog.Int64("writeID", request.GetWriteID()),
 	)
@@ -201,25 +217,40 @@ func (ss *StorageService) Gossip(ctx gorums.ServerCtx, request *kvsprotos.Gossip
 	ts := ss.timestamp.Lock()
 	*ts++
 	writeTs := *ts
-	updated := ss.storage.WriteValue(request.GetNodeID(), request.GetKey(), request.GetValue(), request.GetTimestamp())
-	valuesToGossip, err := ss.storage.GetGossipValues(
+	updated := ss.storage.WriteValue(request.GetNodeID(), request.GetKey(), request.GetAggValue(), request.GetAggTimestamp())
+	wroteLocal := ss.storage.WriteLocalValue(request.GetNodeID(), request.GetKey(), request.GetLocalValue(), request.GetLocalTimestamp())
+	if wroteLocal {
+		ss.logger.Debug("wrote local value",
+			slog.Int64("key", request.GetKey()),
+			slog.Int64("value", request.GetLocalValue()))
+	} else {
+		ss.logger.Debug("did not receive local value",
+			slog.Int64("key", request.GetKey()))
+	}
+	localValue, hasLocal := ss.storage.ReadLocalValue(request.GetKey(), ss.id)
+	valuesToGossip, gossipValueErr := ss.storage.GossipValues(
 		request.GetKey(),
 		ss.nodeManager.NeighbourIDs(),
 	)
 	// both the write and read must happen while ts mutex is locked to avoid inconsistencies
 	ss.timestamp.Unlock(&ts)
 
-	if err != nil {
+	if gossipValueErr != nil {
 		ss.logger.Warn("failed to retrieve values to gossip",
+			slog.Any("err", gossipValueErr),
 			slog.Int64("key", request.GetKey()),
 			slog.String("id", request.GetNodeID()))
 		return &emptypb.Empty{}, nil
 	}
+	if !hasLocal {
+		ss.logger.Debug("node does not have local value for this key",
+			slog.Int64("key", request.GetKey()),
+			slog.String("id", request.GetNodeID()))
+	}
 
 	if updated && ss.hasValueToGossip(request.GetNodeID(), valuesToGossip) {
-		go ss.sendGossip(request.NodeID, request.GetKey(), valuesToGossip, writeTs, request.GetWriteID())
+		go ss.sendGossip(request.NodeID, request.GetKey(), valuesToGossip, writeTs, localValue, request.GetWriteID())
 	}
-	// ss.logger.Printf("[StorageService] - gossip rpc, writeID = %d, nodeID = %s handled\n", request.GetWriteID(), request.GetNodeID())
 	return &emptypb.Empty{}, nil
 }
 
