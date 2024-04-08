@@ -125,7 +125,7 @@ func TestStorageService_Write(t *testing.T) {
 	wg.Wait()
 }
 
-// TestStorageService_Write tests writing the same value to all nodes, and checking that the LOCAL values has propagated to the required nodes.
+// TestStorageService_WriteLocal tests writing a value to a node, and checking that the LOCAL values has propagated to the required nodes.
 func TestStorageService_WriteLocal(t *testing.T) {
 	shouldHaveValue := []uint32{1, 2}
 	shouldNotHaveValue := []uint32{0, 3, 4, 5, 6, 7, 8, 9}
