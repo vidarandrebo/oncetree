@@ -75,14 +75,17 @@ func (fd *FailureDetector) Suspect(nodeID string) {
 }
 
 func (fd *FailureDetector) Run(ctx context.Context, wg *sync.WaitGroup) {
+	timeoutTick := time.Tick(consts.FailureDetectorInterval)
+	heartbeatTick := time.Tick(consts.HeartbeatSendInterval)
+
 mainLoop:
 	for {
 		select {
-		case <-time.After(time.Duration(consts.FailureDetectorInterval) * time.Second):
+		case <-timeoutTick:
 			fd.timeout()
 		case <-ctx.Done():
 			break mainLoop
-		case <-time.After(consts.HeartbeatSendInterval):
+		case <-heartbeatTick:
 			fd.sendHeartbeat()
 		}
 	}
@@ -94,7 +97,7 @@ func (fd *FailureDetector) timeout() {
 	for _, nodeID := range fd.nodes.Values() {
 		if !fd.alive.Contains(nodeID) && !fd.suspected.Contains(nodeID) {
 			fd.suspected.Add(nodeID)
-			fd.logger.Info(
+			fd.logger.Warn(
 				"suspect",
 				slog.String("node", nodeID))
 			fd.Suspect(nodeID)

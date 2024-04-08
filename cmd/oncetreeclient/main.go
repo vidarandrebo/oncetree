@@ -4,27 +4,20 @@ import (
 	"github.com/vidarandrebo/oncetree"
 )
 
-var (
-	nodeIDs = []string{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"}
-	nodeMap = map[string]string{
-		"0": ":9080",
-		"1": ":9081",
-		"2": ":9082",
-		"3": ":9083",
-		"4": ":9084",
-		"5": ":9085",
-		"6": ":9086",
-		"7": ":9087",
-		"8": ":9088",
-		"9": ":9089",
-	}
-)
+var gorumsNodeMap = map[string]uint32{
+	":9080": 0,
+	":9081": 1,
+	":9082": 2,
+	":9083": 3,
+	":9084": 4,
+	":9085": 5,
+	":9086": 6,
+	":9087": 7,
+	":9088": 8,
+	":9089": 9,
+}
 
 func main() {
-	nodeAddrs := make([]string, 0)
-	for _, nodeID := range nodeIDs {
-		nodeAddrs = append(nodeAddrs, nodeMap[nodeID])
-	}
-	client := oncetree.NewClient(nodeAddrs)
+	client := oncetree.NewClient(gorumsNodeMap)
 	client.Run()
 }
