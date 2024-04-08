@@ -548,6 +548,7 @@ var (
 		(*emptypb.Empty)(nil),  // 8: google.protobuf.Empty
 	}
 )
+
 var file_protos_nodemanager_nodemanager_proto_depIdxs = []int32{
 	0, // 0: nodemanager.NodeManagerService.Join:input_type -> nodemanager.JoinRequest
 	2, // 1: nodemanager.NodeManagerService.Ready:input_type -> nodemanager.ReadyMessage

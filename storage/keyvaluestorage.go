@@ -12,13 +12,15 @@ import (
 //
 // NodeAddress -> Key -> Value
 type KeyValueStorage struct {
-	data map[string]map[int64]TimestampedValue
-	mut  sync.RWMutex
+	data  map[string]map[int64]TimestampedValue
+	local map[string]map[int64]TimestampedValue
+	mut   sync.RWMutex
 }
 
 func NewKeyValueStorage() *KeyValueStorage {
 	return &KeyValueStorage{
-		data: make(map[string]map[int64]TimestampedValue),
+		data:  make(map[string]map[int64]TimestampedValue),
+		local: make(map[string]map[int64]TimestampedValue),
 	}
 }
 
@@ -38,6 +40,20 @@ func (kvs *KeyValueStorage) ReadValue(key int64) (int64, error) {
 		return agg, nil
 	}
 	return 0, fmt.Errorf("keyvaluestorage does not contain key %v", key)
+}
+
+// ReadLocalValue reads the local value of key from the input nodeID
+func (kvs *KeyValueStorage) ReadLocalValue(key int64, nodeID string) (TimestampedValue, bool) {
+	kvs.mut.RLock()
+	defer kvs.mut.RUnlock()
+	value, ok := kvs.local[nodeID][key]
+	if !ok {
+		return TimestampedValue{
+			Value:     0,
+			Timestamp: 0,
+		}, false
+	}
+	return value, true
 }
 
 // ReadValueFromNode reads the stored value from a single node
@@ -77,8 +93,8 @@ func (kvs *KeyValueStorage) ReadValueExceptNode(exceptID string, key int64) (int
 	return 0, fmt.Errorf("keyvaluestorage does not contain key %v", key)
 }
 
-// GetGossipValues returns a map nodeID -> value based on the input key
-func (kvs *KeyValueStorage) GetGossipValues(key int64, nodeIDs []string) (map[string]int64, error) {
+// GossipValues returns a map nodeID -> value based on the input key
+func (kvs *KeyValueStorage) GossipValues(key int64, nodeIDs []string) (map[string]int64, error) {
 	values := make(map[string]int64)
 	for _, nodeID := range nodeIDs {
 		// ReadValueExceptNode grabs lock, no need to lock here
@@ -108,6 +124,25 @@ func (kvs *KeyValueStorage) WriteValue(nodeID string, key int64, value int64, ti
 		}
 	}
 	kvs.data[nodeID][key] = TimestampedValue{Value: value, Timestamp: timestamp}
+	return true
+}
+
+func (kvs *KeyValueStorage) WriteLocalValue(nodeID string, key int64, value int64, timestamp int64) bool {
+	// timestamp == 0 is the default and a write operation has not occured at nodeID
+	if timestamp == 0 {
+		return false
+	}
+	kvs.mut.Lock()
+	defer kvs.mut.Unlock()
+	if _, containsNode := kvs.local[nodeID]; !containsNode {
+		kvs.local[nodeID] = make(map[int64]TimestampedValue)
+	}
+	if storedValue, exists := kvs.local[nodeID][key]; exists {
+		if storedValue.Timestamp >= timestamp {
+			return false
+		}
+	}
+	kvs.local[nodeID][key] = TimestampedValue{Value: value, Timestamp: timestamp}
 	return true
 }
 
