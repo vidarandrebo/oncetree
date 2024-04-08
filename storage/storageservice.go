@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"reflect"
 
@@ -18,7 +19,7 @@ import (
 
 type StorageService struct {
 	id             string
-	storage        KeyValueStorage
+	storage        *KeyValueStorage
 	logger         *slog.Logger
 	timestamp      *mutex.RWMutex[int64]
 	nodeManager    *nodemanager.NodeManager
@@ -30,7 +31,7 @@ func NewStorageService(id string, logger *slog.Logger, nodeManager *nodemanager.
 	ss := &StorageService{
 		id:             id,
 		logger:         logger.With(slog.Group("node", slog.String("module", "storageservice"))),
-		storage:        *NewKeyValueStorage(),
+		storage:        NewKeyValueStorage(),
 		nodeManager:    nodeManager,
 		timestamp:      mutex.New[int64](0),
 		eventBus:       eventBus,
@@ -108,7 +109,6 @@ func (ss *StorageService) sendGossip(originID string, key int64, values map[stri
 				"node lookup failed",
 				slog.Uint64("gorumsID", uint64(gorumsNode.ID())),
 			)
-
 			continue
 		}
 		// skip returning to originID and sending to self.
@@ -134,12 +134,17 @@ func (ss *StorageService) sendGossip(originID string, key int64, values map[stri
 		)
 		sent = true
 		if err != nil {
-			// ss.logger.Panicf("[StorageService] - Gossip rpc of writeID = %d to nodeID = %s err = %v", writeID, nodeID, err)
+			ss.logger.Error("sending of gossip message failed",
+				slog.Any("err", err),
+				slog.Int64("key", key),
+				slog.String("nodeID", nodeID),
+				slog.Int64("value", values[nodeID]))
 		}
 		cancel()
 	}
 	if sent == false {
-		// ss.logger.Printf("[StorageService] - gossip rpc of writeID = %d, node is leaf-node", writeID)
+		ss.logger.Debug("node is leaf node, no message send",
+			slog.Any("key", key))
 	}
 }
 
@@ -189,6 +194,18 @@ func (ss *StorageService) Read(ctx gorums.ServerCtx, request *kvsprotos.ReadRequ
 		return &kvsprotos.ReadResponse{Value: 0}, err
 	}
 	return &kvsprotos.ReadResponse{Value: value}, nil
+}
+
+// ReadLocal rpc is used for checking that local values are propagated as intended
+func (ss *StorageService) ReadLocal(ctx gorums.ServerCtx, request *kvsprotos.ReadLocalRequest) (response *kvsprotos.ReadResponse, err error) {
+	ss.logger.Debug("ReadLocal rpc",
+		slog.Int64("key", request.GetKey()),
+		slog.String("nodeID", request.GetNodeID()))
+	value, ok := ss.storage.ReadLocalValue(request.GetKey(), request.GetNodeID())
+	if !ok {
+		return &kvsprotos.ReadResponse{Value: 0}, errors.New("value not found")
+	}
+	return &kvsprotos.ReadResponse{Value: value.Value}, nil
 }
 
 func (ss *StorageService) ReadAll(ctx gorums.ServerCtx, request *kvsprotos.ReadRequest) (response *kvsprotos.ReadAllResponse, err error) {

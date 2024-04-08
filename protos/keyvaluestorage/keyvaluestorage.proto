@@ -8,6 +8,10 @@ package keyvaluestorage;
 option go_package = "github.com/vidarandrebo/oncetree/keyvaluestorage";
 
 message ReadRequest { int64 Key = 1; }
+message ReadLocalRequest { 
+    int64 Key = 1;
+    string NodeID = 2;
+    }
 message ReadResponse { int64 Value = 1; }
 // ReadAllResponse contains a map Address -> Value
 message ReadAllResponse { map<string, int64> Value = 1; }
@@ -34,6 +38,7 @@ service KeyValueStorage {
   rpc ReadAll(ReadRequest) returns (ReadAllResponse) {
     option (gorums.quorumcall) = true;
   }
+  rpc ReadLocal(ReadLocalRequest) returns (ReadResponse) {}
   rpc Gossip(GossipMessage) returns (google.protobuf.Empty) {}
 
   rpc PrintState(google.protobuf.Empty) returns (google.protobuf.Empty) {}

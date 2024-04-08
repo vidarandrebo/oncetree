@@ -215,6 +215,21 @@ func (n *Node) Read(ctx context.Context, in *ReadRequest) (resp *ReadResponse, e
 	return res.(*ReadResponse), err
 }
 
+// ReadLocal is a quorum call invoked on all nodes in configuration c,
+// with the same argument in, and returns a combined result.
+func (n *Node) ReadLocal(ctx context.Context, in *ReadLocalRequest) (resp *ReadResponse, err error) {
+	cd := gorums.CallData{
+		Message: in,
+		Method:  "keyvaluestorage.KeyValueStorage.ReadLocal",
+	}
+
+	res, err := n.RawNode.RPCCall(ctx, cd)
+	if err != nil {
+		return nil, err
+	}
+	return res.(*ReadResponse), err
+}
+
 // Gossip is a quorum call invoked on all nodes in configuration c,
 // with the same argument in, and returns a combined result.
 func (n *Node) Gossip(ctx context.Context, in *GossipMessage) (resp *emptypb.Empty, err error) {
@@ -250,6 +265,7 @@ type KeyValueStorage interface {
 	Write(ctx gorums.ServerCtx, request *WriteRequest) (response *emptypb.Empty, err error)
 	Read(ctx gorums.ServerCtx, request *ReadRequest) (response *ReadResponse, err error)
 	ReadAll(ctx gorums.ServerCtx, request *ReadRequest) (response *ReadAllResponse, err error)
+	ReadLocal(ctx gorums.ServerCtx, request *ReadLocalRequest) (response *ReadResponse, err error)
 	Gossip(ctx gorums.ServerCtx, request *GossipMessage) (response *emptypb.Empty, err error)
 	PrintState(ctx gorums.ServerCtx, request *emptypb.Empty) (response *emptypb.Empty, err error)
 }
@@ -271,6 +287,12 @@ func RegisterKeyValueStorageServer(srv *gorums.Server, impl KeyValueStorage) {
 		req := in.Message.(*ReadRequest)
 		defer ctx.Release()
 		resp, err := impl.ReadAll(ctx, req)
+		gorums.SendMessage(ctx, finished, gorums.WrapMessage(in.Metadata, resp, err))
+	})
+	srv.RegisterHandler("keyvaluestorage.KeyValueStorage.ReadLocal", func(ctx gorums.ServerCtx, in *gorums.Message, finished chan<- *gorums.Message) {
+		req := in.Message.(*ReadLocalRequest)
+		defer ctx.Release()
+		resp, err := impl.ReadLocal(ctx, req)
 		gorums.SendMessage(ctx, finished, gorums.WrapMessage(in.Metadata, resp, err))
 	})
 	srv.RegisterHandler("keyvaluestorage.KeyValueStorage.Gossip", func(ctx gorums.ServerCtx, in *gorums.Message, finished chan<- *gorums.Message) {
