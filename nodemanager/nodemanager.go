@@ -29,7 +29,8 @@ type NodeManager struct {
 	address        string
 	fanout         int
 	neighbours     *maps.ConcurrentMap[string, *Neighbour]
-	epoch          int64
+	groups         *maps.ConcurrentMap[string, *Group]
+	epoch          *mutex.RWMutex[int64]
 	nextGorumsID   *mutex.RWMutex[uint32]
 	lastJoinID     *mutex.RWMutex[string]
 	joinMut        sync.Mutex
@@ -44,8 +45,10 @@ func New(id string, address string, fanout int, logger *slog.Logger, eventBus *e
 		address:        address,
 		fanout:         fanout,
 		neighbours:     maps.NewConcurrentMap[string, *Neighbour](),
+		groups:         maps.NewConcurrentMap[string, *Group](),
 		nextGorumsID:   mutex.New[uint32](0),
 		lastJoinID:     mutex.New(""),
+		epoch:          mutex.New[int64](0),
 		logger:         logger.With(slog.Group("node", slog.String("module", "nodemanager"))),
 		eventBus:       eventBus,
 		gorumsProvider: gorumsProvider,
@@ -70,6 +73,29 @@ func (nm *NodeManager) HandleFailureEvent(nodeID string) {
 
 func (nm *NodeManager) HandleNeighbourAddedEvent(e NeighbourAddedEvent) {
 	nm.logger.Info("added neighbour", "id", e.NodeID)
+
+	epoch := nm.epoch.Lock()
+	*epoch++
+	epochVal := *epoch
+	members := make([]*nmprotos.GroupMemberInfo, 0)
+	for _, m := range nm.neighbours.Values() {
+		members = append(members, &nmprotos.GroupMemberInfo{
+			Role:    int64(m.Role),
+			Address: m.Address,
+			ID:      m.ID,
+		})
+	}
+
+	nm.epoch.Unlock(&epoch)
+
+	cfg := nm.gorumsProvider.NodeManagerConfig()
+	ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
+	defer cancel()
+	cfg.GroupInfo(ctx, &nmprotos.GroupInfoMessage{
+		Epoch:   epochVal,
+		NodeID:  nm.id,
+		Members: members,
+	})
 }
 
 func (nm *NodeManager) HandleNeighbourRemovedEvent(e NeighbourRemovedEvent) {
@@ -335,4 +361,32 @@ func (nm *NodeManager) Accept(ctx gorums.ServerCtx, request *nmprotos.AcceptMess
 func (nm *NodeManager) Commit(ctx gorums.ServerCtx, request *nmprotos.CommitMessage) {
 	// TODO implement me
 	panic("implement me")
+}
+
+func (nm *NodeManager) GroupInfo(ctx gorums.ServerCtx, request *nmprotos.GroupInfoMessage) {
+	// message arrive one by one from same client in gorums, so should not need to lock for epoch compare
+	group, ok := nm.groups.Get(request.GetNodeID())
+
+	// Group exists and is up to date
+	if ok && group.epoch >= request.GetEpoch() {
+		return
+	}
+
+	if !ok {
+		group = NewGroup()
+		nm.groups.Set(request.GetNodeID(), group)
+	}
+	newMembers := make([]GroupMember, 0)
+	for _, member := range request.GetMembers() {
+		newMembers = append(newMembers, NewGroupMember(
+			member.GetID(),
+			member.GetAddress(),
+			NodeRole(member.GetRole())),
+		)
+	}
+	group.epoch = request.GetEpoch()
+	group.members = newMembers
+	nm.logger.Info("group updated",
+		slog.String("id", request.GetNodeID()),
+		slog.String("group", group.String()))
 }

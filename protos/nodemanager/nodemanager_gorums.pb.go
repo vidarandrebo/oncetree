@@ -154,6 +154,20 @@ type Node struct {
 // Reference imports to suppress errors if they are not otherwise used.
 var _ emptypb.Empty
 
+// GroupInfo is a quorum call invoked on all nodes in configuration c,
+// with the same argument in, and returns a combined result.
+func (c *Configuration) GroupInfo(ctx context.Context, in *GroupInfoMessage, opts ...gorums.CallOption) {
+	cd := gorums.QuorumCallData{
+		Message: in,
+		Method:  "nodemanager.NodeManagerService.GroupInfo",
+	}
+
+	c.RawConfiguration.Multicast(ctx, cd, opts...)
+}
+
+// Reference imports to suppress errors if they are not otherwise used.
+var _ emptypb.Empty
+
 // Commit is a quorum call invoked on all nodes in configuration c,
 // with the same argument in, and returns a combined result.
 func (c *Configuration) Commit(ctx context.Context, in *CommitMessage, opts ...gorums.CallOption) {
@@ -260,6 +274,7 @@ func (n *Node) Ready(ctx context.Context, in *ReadyMessage) (resp *emptypb.Empty
 
 // NodeManagerService is the server-side API for the NodeManagerService Service
 type NodeManagerService interface {
+	GroupInfo(ctx gorums.ServerCtx, request *GroupInfoMessage)
 	Join(ctx gorums.ServerCtx, request *JoinRequest) (response *JoinResponse, err error)
 	Ready(ctx gorums.ServerCtx, request *ReadyMessage) (response *emptypb.Empty, err error)
 	Prepare(ctx gorums.ServerCtx, request *PrepareMessage) (response *PromiseMessage, err error)
@@ -268,6 +283,11 @@ type NodeManagerService interface {
 }
 
 func RegisterNodeManagerServiceServer(srv *gorums.Server, impl NodeManagerService) {
+	srv.RegisterHandler("nodemanager.NodeManagerService.GroupInfo", func(ctx gorums.ServerCtx, in *gorums.Message, _ chan<- *gorums.Message) {
+		req := in.Message.(*GroupInfoMessage)
+		defer ctx.Release()
+		impl.GroupInfo(ctx, req)
+	})
 	srv.RegisterHandler("nodemanager.NodeManagerService.Join", func(ctx gorums.ServerCtx, in *gorums.Message, finished chan<- *gorums.Message) {
 		req := in.Message.(*JoinRequest)
 		defer ctx.Release()
