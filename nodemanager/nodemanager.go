@@ -29,7 +29,6 @@ type NodeManager struct {
 	address        string
 	fanout         int
 	neighbours     *maps.ConcurrentMap[string, *Neighbour]
-	groups         *maps.ConcurrentMap[string, *Group]
 	epoch          *mutex.RWMutex[int64]
 	nextGorumsID   *mutex.RWMutex[uint32]
 	lastJoinID     *mutex.RWMutex[string]
@@ -45,7 +44,6 @@ func New(id string, address string, fanout int, logger *slog.Logger, eventBus *e
 		address:        address,
 		fanout:         fanout,
 		neighbours:     maps.NewConcurrentMap[string, *Neighbour](),
-		groups:         maps.NewConcurrentMap[string, *Group](),
 		nextGorumsID:   mutex.New[uint32](0),
 		lastJoinID:     mutex.New(""),
 		epoch:          mutex.New[int64](0),
@@ -53,6 +51,12 @@ func New(id string, address string, fanout int, logger *slog.Logger, eventBus *e
 		eventBus:       eventBus,
 		gorumsProvider: gorumsProvider,
 	}
+	eventBus.RegisterHandler(reflect.TypeOf(NeighbourReadyEvent{}),
+		func(e any) {
+			if event, ok := e.(NeighbourReadyEvent); ok {
+				nm.HandleNeighbourReadyEvent(event)
+			}
+		})
 	eventBus.RegisterHandler(reflect.TypeOf(NeighbourAddedEvent{}),
 		func(e any) {
 			if event, ok := e.(NeighbourAddedEvent); ok {
@@ -70,8 +74,10 @@ func New(id string, address string, fanout int, logger *slog.Logger, eventBus *e
 
 func (nm *NodeManager) HandleFailureEvent(nodeID string) {
 }
-
 func (nm *NodeManager) HandleNeighbourAddedEvent(e NeighbourAddedEvent) {
+}
+
+func (nm *NodeManager) HandleNeighbourReadyEvent(e NeighbourReadyEvent) {
 	nm.logger.Info("added neighbour", "id", e.NodeID)
 
 	epoch := nm.epoch.Lock()
@@ -344,7 +350,18 @@ func (nm *NodeManager) Ready(ctx gorums.ServerCtx, request *nmprotos.ReadyMessag
 		"RPC Ready",
 		slog.String("id", request.GetNodeID()),
 	)
+	neighbour, ok := nm.Neighbour(request.GetNodeID())
+	if !ok {
+		// make error here...
+		return &emptypb.Empty{}, nil
+	}
+	if neighbour.Ready {
+		return &emptypb.Empty{}, nil
+	}
+
+	go nm.SendReady(request.GetNodeID())
 	nm.eventBus.PushEvent(NewNeighbourReadyEvent(request.GetNodeID()))
+	neighbour.Ready = true
 	return &emptypb.Empty{}, nil
 }
 
@@ -365,17 +382,18 @@ func (nm *NodeManager) Commit(ctx gorums.ServerCtx, request *nmprotos.CommitMess
 
 func (nm *NodeManager) GroupInfo(ctx gorums.ServerCtx, request *nmprotos.GroupInfoMessage) {
 	// message arrive one by one from same client in gorums, so should not need to lock for epoch compare
-	group, ok := nm.groups.Get(request.GetNodeID())
+	node, ok := nm.neighbours.Get(request.GetNodeID())
 
 	// Group exists and is up to date
-	if ok && group.epoch >= request.GetEpoch() {
+	if ok && node.Group.epoch >= request.GetEpoch() {
+		return
+	}
+	if !ok {
+		nm.logger.Error("received group info from unknown node",
+			slog.String("id", request.GetNodeID()))
 		return
 	}
 
-	if !ok {
-		group = NewGroup()
-		nm.groups.Set(request.GetNodeID(), group)
-	}
 	newMembers := make([]GroupMember, 0)
 	for _, member := range request.GetMembers() {
 		newMembers = append(newMembers, NewGroupMember(
@@ -384,9 +402,9 @@ func (nm *NodeManager) GroupInfo(ctx gorums.ServerCtx, request *nmprotos.GroupIn
 			NodeRole(member.GetRole())),
 		)
 	}
-	group.epoch = request.GetEpoch()
-	group.members = newMembers
-	nm.logger.Info("group updated",
+	node.Group.epoch = request.GetEpoch()
+	node.Group.members = newMembers
+	nm.logger.Debug("group updated",
 		slog.String("id", request.GetNodeID()),
-		slog.String("group", group.String()))
+		slog.String("group", node.Group.String()))
 }

@@ -6,8 +6,9 @@ type Neighbour struct {
 	ID       string
 	GorumsID uint32
 	Address  string
-	Group    map[string]*GroupMember
+	Group    Group
 	Role     NodeRole
+	Ready    bool
 }
 
 func NewNeighbour(ID string, gorumsID uint32, address string, role NodeRole) *Neighbour {
@@ -15,8 +16,9 @@ func NewNeighbour(ID string, gorumsID uint32, address string, role NodeRole) *Ne
 		ID:       ID,
 		GorumsID: gorumsID,
 		Address:  address,
-		Group:    make(map[string]*GroupMember),
+		Group:    NewGroup(),
 		Role:     role,
+		Ready:    false,
 	}
 }
 
