@@ -18,7 +18,10 @@ message JoinResponse {
     string NextAddress = 3;
 }
 
-message ReadyMessage {string NodeID = 1;}
+message ReadyMessage {
+    bool OK = 1;
+    string NodeID = 2;
+}
 
 message GroupMemberInfo {
     int64 Role = 1;
@@ -54,7 +57,7 @@ service NodeManagerService {
         option (gorums.multicast) = true;
     }
     rpc Join(JoinRequest) returns (JoinResponse){}
-    rpc Ready(ReadyMessage) returns (google.protobuf.Empty) {}
+    rpc Ready(ReadyMessage) returns (ReadyMessage) {}
     rpc Prepare(PrepareMessage) returns (PromiseMessage) {
         option (gorums.quorumcall) = true;
     }

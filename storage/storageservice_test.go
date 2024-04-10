@@ -95,7 +95,7 @@ func TestStorageService_shareAll(t *testing.T) {
 // TestStorageService_Write tests writing the same value to all nodes, and checking that the values has propagated to all nodes.
 func TestStorageService_Write(t *testing.T) {
 	testNodes, wg := oncetree.StartTestNodes(false)
-	time.Sleep(consts.GorumsDialTimeout)
+	// time.Sleep(consts.GorumsDialTimeout)
 	_, cfg := createKeyValueStorageConfig()
 
 	for i, node := range cfg.Nodes() {

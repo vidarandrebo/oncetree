@@ -8,7 +8,6 @@ type Neighbour struct {
 	Address  string
 	Group    Group
 	Role     NodeRole
-	Ready    bool
 }
 
 func NewNeighbour(ID string, gorumsID uint32, address string, role NodeRole) *Neighbour {
@@ -18,7 +17,6 @@ func NewNeighbour(ID string, gorumsID uint32, address string, role NodeRole) *Ne
 		Address:  address,
 		Group:    NewGroup(),
 		Role:     role,
-		Ready:    false,
 	}
 }
 

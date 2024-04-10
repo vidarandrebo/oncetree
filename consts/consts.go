@@ -6,12 +6,12 @@ import (
 )
 
 const (
-	GorumsDialTimeout       = 3 * time.Second
-	RPCContextTimeout       = 5 * time.Second
-	HeartbeatSendInterval   = 1 * time.Second
+	GorumsDialTimeout        = 3 * time.Second
+	RPCContextTimeout        = 5 * time.Second
+	HeartbeatSendInterval    = 1 * time.Second
 	FailureDetectionInterval = 5 * time.Second
-	Fanout                  = 2
-	TimeFormat              = "[11:11:11]"
-	LogLevel                = slog.LevelInfo
-	LogFolder               = "logs"
+	Fanout                   = 2
+	TimeFormat               = "[11:11:11]"
+	LogLevel                 = slog.LevelInfo
+	LogFolder                = "logs"
 )

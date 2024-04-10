@@ -64,6 +64,7 @@ func (ss *StorageService) shareAll(nodeID string) {
 		tsRef := ss.timestamp.RLock()
 		ts := *tsRef
 		value, err := ss.storage.ReadValueExceptNode(nodeID, key)
+		// TODO - get local value
 		ss.timestamp.RUnlock(&tsRef)
 		if err != nil {
 			ss.logger.Error(
@@ -78,6 +79,7 @@ func (ss *StorageService) shareAll(nodeID string) {
 			Key:          key,
 			AggValue:     value,
 			AggTimestamp: ts,
+			// insert local value
 		}
 		_, err = node.Gossip(ctx, request)
 		if err != nil {
