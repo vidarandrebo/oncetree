@@ -74,6 +74,7 @@ func New(id string, address string, fanout int, logger *slog.Logger, eventBus *e
 
 func (nm *NodeManager) HandleFailureEvent(nodeID string) {
 }
+
 func (nm *NodeManager) HandleNeighbourAddedEvent(e NeighbourAddedEvent) {
 }
 

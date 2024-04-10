@@ -75,25 +75,29 @@ func (fd *FailureDetector) Suspect(nodeID string) {
 }
 
 func (fd *FailureDetector) Run(ctx context.Context, wg *sync.WaitGroup) {
-	timeoutTick := time.Tick(consts.FailureDetectorInterval)
+	heartbeatTimeout := time.After(consts.FailureDetectionInterval)
 	heartbeatTick := time.Tick(consts.HeartbeatSendInterval)
 
 mainLoop:
 	for {
 		select {
-		case <-timeoutTick:
+		case <-heartbeatTimeout:
 			fd.timeout()
+			// timeout operations should not be queued,
+			// so therefore the time.After is reset instead of using ticker
+			heartbeatTimeout = time.After(consts.FailureDetectionInterval)
 		case <-ctx.Done():
 			break mainLoop
 		case <-heartbeatTick:
 			fd.sendHeartbeat()
 		}
 	}
-	fd.logger.Info("closing")
+	fd.logger.Debug("break loop")
 	wg.Done()
 }
 
 func (fd *FailureDetector) timeout() {
+	fd.logger.Debug("timeout")
 	for _, nodeID := range fd.nodes.Values() {
 		if !fd.alive.Contains(nodeID) && !fd.suspected.Contains(nodeID) {
 			fd.suspected.Add(nodeID)
@@ -113,6 +117,10 @@ func (fd *FailureDetector) Heartbeat(ctx gorums.ServerCtx, request *fdprotos.Hea
 		slog.String("id", request.GetNodeID()),
 	)
 	fd.alive.Increment(request.GetNodeID(), 1)
+	if fd.suspected.Contains(request.GetNodeID()) {
+		fd.logger.Error("received heartbeat from suspected node", slog.String("id", request.GetNodeID()))
+		panic("heartbeat problem")
+	}
 }
 
 func (fd *FailureDetector) sendHeartbeat() {
@@ -121,4 +129,8 @@ func (fd *FailureDetector) sendHeartbeat() {
 	ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
 	defer cancel()
 	gorumsConfig.Heartbeat(ctx, &msg)
+	if err := ctx.Err(); err != nil {
+		fd.logger.Error("error when sending heartbeat",
+			slog.Any("err", err))
+	}
 }
