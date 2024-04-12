@@ -1,4 +1,4 @@
-package failuredetector
+package fdevents
 
 type NodeFailedEvent struct {
 	NodeID string

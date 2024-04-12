@@ -9,6 +9,8 @@ import (
 	"reflect"
 	"sync"
 
+	"github.com/vidarandrebo/oncetree/failuredetector/fdevents"
+
 	"github.com/relab/gorums"
 	"github.com/vidarandrebo/oncetree/gorumsprovider"
 	fdprotos "github.com/vidarandrebo/oncetree/protos/failuredetector"
@@ -70,16 +72,16 @@ func NewNode(id string, rpcAddr string, logFile io.Writer) *Node {
 
 func (n *Node) setupEventHandlers() {
 	n.eventbus.RegisterHandler(
-		reflect.TypeOf(failuredetector.NodeFailedEvent{}),
+		reflect.TypeOf(fdevents.NodeFailedEvent{}),
 		func(e any) {
-			if event, ok := e.(failuredetector.NodeFailedEvent); ok {
+			if event, ok := e.(fdevents.NodeFailedEvent); ok {
 				n.nodeFailedHandler(event)
 			}
 		},
 	)
 }
 
-func (n *Node) nodeFailedHandler(e failuredetector.NodeFailedEvent) {
+func (n *Node) nodeFailedHandler(e fdevents.NodeFailedEvent) {
 	// n.logger.Printf("node with id %s has failed", e.NodeID)
 }
 

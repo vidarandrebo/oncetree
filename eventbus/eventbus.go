@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"reflect"
 	"sync"
+
+	"github.com/vidarandrebo/oncetree/consts"
 )
 
 type EventBus struct {
@@ -30,13 +32,21 @@ func New(logger *slog.Logger) *EventBus {
 }
 
 func (eb *EventBus) Run(ctx context.Context, wg *sync.WaitGroup) {
-	var taskHandlerWg sync.WaitGroup
+	var handlerWaitGroup sync.WaitGroup
 	defer wg.Done()
-	numTaskHandlers := 2
-	for i := 0; i < numTaskHandlers; i++ {
-		taskHandlerWg.Add(1)
-		go eb.taskHandler(ctx, &taskHandlerWg)
+	for i := 0; i < consts.NumTaskHandlers; i++ {
+		handlerWaitGroup.Add(1)
+		go eb.taskHandler(ctx, &handlerWaitGroup)
 	}
+
+	for i := 0; i < consts.NumEventHandlers; i++ {
+		handlerWaitGroup.Add(1)
+		go eb.eventHandler(ctx, &handlerWaitGroup)
+	}
+	handlerWaitGroup.Wait()
+}
+
+func (eb *EventBus) eventHandler(ctx context.Context, wg *sync.WaitGroup) {
 loop:
 	for {
 		select {
@@ -45,14 +55,14 @@ loop:
 				eb.handle(event)
 			} else {
 				// break by closing channel, should be test only behaviour
-				eb.logger.Warn("channel closed, exiting event handler loop")
+				eb.logger.Warn("event channel closed, exiting event handler loop")
 				break loop
 			}
 		case <-ctx.Done():
 			break loop
 		}
 	}
-	taskHandlerWg.Wait()
+	wg.Done()
 }
 
 func (eb *EventBus) taskHandler(ctx context.Context, wg *sync.WaitGroup) {
@@ -62,12 +72,7 @@ loop:
 		case task := <-eb.pendingTasks:
 			// task can be nil if chan is closed
 			if task != nil {
-				select {
-				case <-ctx.Done():
-					break loop
-				default:
-					task()
-				}
+				task()
 			} else {
 				// break by closing channel, should be test only behaviour
 				eb.logger.Warn("task channel closed, exiting task handler loop")

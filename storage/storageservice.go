@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"reflect"
 
+	"github.com/vidarandrebo/oncetree/nodemanager/nmevents"
+
 	"github.com/vidarandrebo/oncetree/gorumsprovider"
 
 	"github.com/relab/gorums"
@@ -37,8 +39,8 @@ func NewStorageService(id string, logger *slog.Logger, nodeManager *nodemanager.
 		eventBus:       eventBus,
 		configProvider: configProvider,
 	}
-	eventBus.RegisterHandler(reflect.TypeOf(nodemanager.NeighbourReadyEvent{}), func(e any) {
-		if event, ok := e.(nodemanager.NeighbourReadyEvent); ok {
+	eventBus.RegisterHandler(reflect.TypeOf(nmevents.NeighbourReadyEvent{}), func(e any) {
+		if event, ok := e.(nmevents.NeighbourReadyEvent); ok {
 			ss.shareAll(event.NodeID)
 		}
 	})

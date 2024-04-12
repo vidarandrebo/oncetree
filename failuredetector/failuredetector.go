@@ -7,6 +7,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/vidarandrebo/oncetree/failuredetector/fdevents"
+	"github.com/vidarandrebo/oncetree/nodemanager/nmevents"
+
 	"github.com/vidarandrebo/oncetree/gorumsprovider"
 
 	"github.com/vidarandrebo/oncetree/consts"
@@ -44,9 +47,9 @@ func New(id string, logger *slog.Logger, nodeManager *nodemanager.NodeManager, e
 		configProvider: configProvider,
 	}
 	eventBus.RegisterHandler(
-		reflect.TypeOf(nodemanager.NeighbourAddedEvent{}),
+		reflect.TypeOf(nmevents.NeighbourAddedEvent{}),
 		func(e any) {
-			if _, ok := e.(nodemanager.NeighbourAddedEvent); ok {
+			if _, ok := e.(nmevents.NeighbourAddedEvent); ok {
 				fd.SetNodesFromManager()
 				// logger.Printf("fd tracking nodes %v", fd.nodes)
 			}
@@ -71,7 +74,7 @@ func (fd *FailureDetector) DeregisterNode(nodeID string) {
 }
 
 func (fd *FailureDetector) Suspect(nodeID string) {
-	fd.eventBus.PushEvent(NewNodeFailedEvent(nodeID))
+	fd.eventBus.PushEvent(fdevents.NewNodeFailedEvent(nodeID))
 }
 
 func (fd *FailureDetector) Run(ctx context.Context, wg *sync.WaitGroup) {

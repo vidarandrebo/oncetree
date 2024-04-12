@@ -9,6 +9,9 @@ import (
 	"slices"
 	"sync"
 
+	"github.com/vidarandrebo/oncetree/failuredetector/fdevents"
+	"github.com/vidarandrebo/oncetree/nodemanager/nmevents"
+
 	"github.com/vidarandrebo/oncetree/gorumsprovider"
 
 	"github.com/vidarandrebo/oncetree/consts"
@@ -50,61 +53,46 @@ func New(id string, address string, fanout int, logger *slog.Logger, eventBus *e
 		eventBus:       eventBus,
 		gorumsProvider: gorumsProvider,
 	}
-	eventBus.RegisterHandler(reflect.TypeOf(NeighbourReadyEvent{}),
+	eventBus.RegisterHandler(reflect.TypeOf(nmevents.NeighbourReadyEvent{}),
 		func(e any) {
-			if event, ok := e.(NeighbourReadyEvent); ok {
+			if event, ok := e.(nmevents.NeighbourReadyEvent); ok {
 				nm.HandleNeighbourReadyEvent(event)
 			}
 		})
-	eventBus.RegisterHandler(reflect.TypeOf(NeighbourAddedEvent{}),
+	eventBus.RegisterHandler(reflect.TypeOf(nmevents.NeighbourAddedEvent{}),
 		func(e any) {
-			if event, ok := e.(NeighbourAddedEvent); ok {
+			if event, ok := e.(nmevents.NeighbourAddedEvent); ok {
 				nm.HandleNeighbourAddedEvent(event)
 			}
 		})
-	eventBus.RegisterHandler(reflect.TypeOf(NeighbourRemovedEvent{}),
+	eventBus.RegisterHandler(reflect.TypeOf(nmevents.NeighbourRemovedEvent{}),
 		func(e any) {
-			if event, ok := e.(NeighbourRemovedEvent); ok {
+			if event, ok := e.(nmevents.NeighbourRemovedEvent); ok {
 				nm.HandleNeighbourRemovedEvent(event)
+			}
+		})
+
+	eventBus.RegisterHandler(reflect.TypeOf(fdevents.NodeFailedEvent{}),
+		func(e any) {
+			if event, ok := e.(fdevents.NodeFailedEvent); ok {
+				nm.HandleFailureEvent(event)
 			}
 		})
 	return nm
 }
 
-func (nm *NodeManager) HandleFailureEvent(nodeID string) {
+func (nm *NodeManager) HandleFailureEvent(e fdevents.NodeFailedEvent) {
 }
 
-func (nm *NodeManager) HandleNeighbourAddedEvent(e NeighbourAddedEvent) {
-}
-
-func (nm *NodeManager) HandleNeighbourReadyEvent(e NeighbourReadyEvent) {
-	// TODO - move this to separate function
+func (nm *NodeManager) HandleNeighbourAddedEvent(e nmevents.NeighbourAddedEvent) {
 	nm.logger.Info("added neighbour", "id", e.NodeID)
-	epoch := nm.epoch.Lock()
-	*epoch++
-	epochVal := *epoch
-	members := make([]*nmprotos.GroupMemberInfo, 0)
-	for _, m := range nm.neighbours.Values() {
-		members = append(members, &nmprotos.GroupMemberInfo{
-			Role:    int64(m.Role),
-			Address: m.Address,
-			ID:      m.ID,
-		})
-	}
-
-	nm.epoch.Unlock(&epoch)
-
-	cfg := nm.gorumsProvider.NodeManagerConfig()
-	ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
-	defer cancel()
-	cfg.GroupInfo(ctx, &nmprotos.GroupInfoMessage{
-		Epoch:   epochVal,
-		NodeID:  nm.id,
-		Members: members,
-	})
 }
 
-func (nm *NodeManager) HandleNeighbourRemovedEvent(e NeighbourRemovedEvent) {
+func (nm *NodeManager) HandleNeighbourReadyEvent(e nmevents.NeighbourReadyEvent) {
+	nm.SendGroupInfo()
+}
+
+func (nm *NodeManager) HandleNeighbourRemovedEvent(e nmevents.NeighbourRemovedEvent) {
 	nm.logger.Info("removed neighbour", "id", e.NodeID)
 }
 
@@ -156,7 +144,7 @@ func (nm *NodeManager) AddNeighbour(nodeID string, address string, role NodeRole
 	nm.neighbours.Set(nodeID, neighbour)
 	nm.gorumsProvider.SetNodes(nm.GorumsNeighbourMap())
 	if role != Tmp {
-		nm.eventBus.PushEvent(NewNeigbourAddedEvent(nodeID))
+		nm.eventBus.PushEvent(nmevents.NewNeigbourAddedEvent(nodeID))
 	}
 }
 
@@ -272,6 +260,31 @@ func (nm *NodeManager) SendJoin(knownAddr string) {
 	}
 }
 
+func (nm *NodeManager) SendGroupInfo() {
+	epoch := nm.epoch.Lock()
+	*epoch++
+	epochVal := *epoch
+	members := make([]*nmprotos.GroupMemberInfo, 0)
+	neighbours := nm.neighbours.Values()
+	nm.epoch.Unlock(&epoch)
+	for _, m := range neighbours {
+		members = append(members, &nmprotos.GroupMemberInfo{
+			Role:    int64(m.Role),
+			Address: m.Address,
+			ID:      m.ID,
+		})
+	}
+
+	cfg := nm.gorumsProvider.NodeManagerConfig()
+	ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
+	defer cancel()
+	cfg.GroupInfo(ctx, &nmprotos.GroupInfoMessage{
+		Epoch:   epochVal,
+		GroupID: nm.id,
+		Members: members,
+	})
+}
+
 func (nm *NodeManager) SendReady(nodeID string) {
 	cfg := nm.gorumsProvider.NodeManagerConfig()
 	ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
@@ -293,7 +306,7 @@ func (nm *NodeManager) SendReady(nodeID string) {
 		return
 	}
 	if response.GetOK() {
-		nm.eventBus.PushEvent(NewNeighbourReadyEvent(nodeID))
+		nm.eventBus.PushEvent(nmevents.NewNeighbourReadyEvent(nodeID))
 	}
 }
 
@@ -357,7 +370,8 @@ func (nm *NodeManager) NextJoinID() string {
 	return *lastJoinID
 }
 
-// Ready is used to signal to the parent that the newly joined node has created a gorums config and is ready to participate in the protocol. This might get handled a different way later...
+// Ready is used to signal to the parent that the newly joined node has created a gorums config and is ready to participate in the protocol.
+// A NeighbourReadyEvent is pushed to the eventbus
 func (nm *NodeManager) Ready(ctx gorums.ServerCtx, request *nmprotos.ReadyMessage) (response *nmprotos.ReadyMessage, err error) {
 	nm.logger.Debug(
 		"RPC Ready",
@@ -369,7 +383,7 @@ func (nm *NodeManager) Ready(ctx gorums.ServerCtx, request *nmprotos.ReadyMessag
 		return &nmprotos.ReadyMessage{OK: false, NodeID: nm.id}, fmt.Errorf("node %s is not joined to this node", request.GetNodeID())
 	}
 
-	nm.eventBus.PushEvent(NewNeighbourReadyEvent(request.GetNodeID()))
+	nm.eventBus.PushEvent(nmevents.NewNeighbourReadyEvent(request.GetNodeID()))
 	return &nmprotos.ReadyMessage{OK: true, NodeID: nm.id}, nil
 }
 
@@ -390,7 +404,7 @@ func (nm *NodeManager) Commit(ctx gorums.ServerCtx, request *nmprotos.CommitMess
 
 func (nm *NodeManager) GroupInfo(ctx gorums.ServerCtx, request *nmprotos.GroupInfoMessage) {
 	// message arrive one by one from same client in gorums, so should not need to lock for epoch compare
-	node, ok := nm.neighbours.Get(request.GetNodeID())
+	node, ok := nm.neighbours.Get(request.GetGroupID())
 
 	// Group exists and is up to date
 	if ok && node.Group.epoch >= request.GetEpoch() {
@@ -398,7 +412,7 @@ func (nm *NodeManager) GroupInfo(ctx gorums.ServerCtx, request *nmprotos.GroupIn
 	}
 	if !ok {
 		nm.logger.Error("received group info from unknown node",
-			slog.String("id", request.GetNodeID()))
+			slog.String("id", request.GetGroupID()))
 		return
 	}
 
@@ -413,6 +427,6 @@ func (nm *NodeManager) GroupInfo(ctx gorums.ServerCtx, request *nmprotos.GroupIn
 	node.Group.epoch = request.GetEpoch()
 	node.Group.members = newMembers
 	nm.logger.Debug("group updated",
-		slog.String("id", request.GetNodeID()),
+		slog.String("id", request.GetGroupID()),
 		slog.String("group", node.Group.String()))
 }

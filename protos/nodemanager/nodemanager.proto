@@ -31,7 +31,7 @@ message GroupMemberInfo {
 
 message GroupInfoMessage {
     int64 Epoch = 1;
-    string NodeID = 2;
+    string GroupID = 2; // GroupID is same as the ID of the node the group covers the failure of
     repeated GroupMemberInfo Members = 3;
 }
 

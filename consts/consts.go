@@ -14,4 +14,6 @@ const (
 	TimeFormat               = "[11:11:11]"
 	LogLevel                 = slog.LevelInfo
 	LogFolder                = "logs"
+	NumEventHandlers         = 2
+	NumTaskHandlers          = 2
 )
