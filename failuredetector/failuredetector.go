@@ -63,7 +63,9 @@ func (fd *FailureDetector) SetNodesFromManager() {
 	fd.suspected.Clear()
 	fd.alive.Clear()
 	for _, neighbour := range fd.nodeManager.Neighbours() {
-		fd.nodes.Add(neighbour.Key)
+		if (neighbour.Value.Role == nodemanager.Parent) || (neighbour.Value.Role == nodemanager.Child) {
+			fd.nodes.Add(neighbour.Key)
+		}
 	}
 }
 
@@ -127,7 +129,12 @@ func (fd *FailureDetector) Heartbeat(ctx gorums.ServerCtx, request *fdprotos.Hea
 }
 
 func (fd *FailureDetector) sendHeartbeat() {
-	gorumsConfig := fd.configProvider.FailureDetectorConfig()
+	fd.logger.Debug("send heartbeat")
+	gorumsConfig, ok := fd.configProvider.FailureDetectorConfig()
+	if !ok {
+		fd.logger.Error("failed to retrieve config",
+			"fn", "fd.sendHeartbeat")
+	}
 	msg := fdprotos.HeartbeatMessage{NodeID: fd.id}
 	ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
 	defer cancel()

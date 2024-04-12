@@ -29,7 +29,6 @@ import (
 type NodeManager struct {
 	id             string
 	address        string
-	fanout         int
 	neighbours     *maps.ConcurrentMap[string, *Neighbour]
 	epoch          *mutex.RWMutex[int64]
 	nextGorumsID   *mutex.RWMutex[uint32]
@@ -40,11 +39,10 @@ type NodeManager struct {
 	gorumsProvider *gorumsprovider.GorumsProvider
 }
 
-func New(id string, address string, fanout int, logger *slog.Logger, eventBus *eventbus.EventBus, gorumsProvider *gorumsprovider.GorumsProvider) *NodeManager {
+func New(id string, address string, logger *slog.Logger, eventBus *eventbus.EventBus, gorumsProvider *gorumsprovider.GorumsProvider) *NodeManager {
 	nm := &NodeManager{
 		id:             id,
 		address:        address,
-		fanout:         fanout,
 		neighbours:     maps.NewConcurrentMap[string, *Neighbour](),
 		nextGorumsID:   mutex.New[uint32](0),
 		lastJoinID:     mutex.New(""),
@@ -107,7 +105,9 @@ func (nm *NodeManager) NeighbourIDs() []string {
 func (nm *NodeManager) GorumsNeighbourMap() map[string]uint32 {
 	IDs := make(map[string]uint32)
 	for _, neighbour := range nm.neighbours.Values() {
-		IDs[neighbour.Address] = neighbour.GorumsID
+		if (neighbour.Role == Parent) || (neighbour.Role == Child) {
+			IDs[neighbour.Address] = neighbour.GorumsID
+		}
 	}
 	return IDs
 }
@@ -163,6 +163,17 @@ func (nm *NodeManager) TmpGorumsMap() map[string]uint32 {
 	gorumsMap := make(map[string]uint32)
 	for _, node := range nm.neighbours.Values() {
 		if node.Role == Tmp {
+			gorumsMap[node.Address] = node.GorumsID
+			break
+		}
+	}
+	return gorumsMap
+}
+
+func (nm *NodeManager) RecoveryGorumsMap() map[string]uint32 {
+	gorumsMap := make(map[string]uint32)
+	for _, node := range nm.neighbours.Values() {
+		if node.Role == Recovery {
 			gorumsMap[node.Address] = node.GorumsID
 			break
 		}
@@ -230,7 +241,10 @@ func (nm *NodeManager) SendJoin(knownAddr string) {
 		nm.AddNeighbour(knownNodeID.String(), knownAddr, Tmp)
 		ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
 		nm.gorumsProvider.SetNodes(nm.TmpGorumsMap())
-		cfg := nm.gorumsProvider.NodeManagerConfig()
+		cfg, ok := nm.gorumsProvider.NodeManagerConfig()
+		if !ok {
+			nm.logger.Error("failed to retrieve config for join operation", slog.String("fn", "nm.SendJoin"))
+		}
 
 		node := cfg.Nodes()[0]
 		joinRequest := &nmprotos.JoinRequest{
@@ -275,7 +289,11 @@ func (nm *NodeManager) SendGroupInfo() {
 		})
 	}
 
-	cfg := nm.gorumsProvider.NodeManagerConfig()
+	cfg, ok := nm.gorumsProvider.NodeManagerConfig()
+	if !ok {
+		nm.logger.Info("no nodes in config, skip sending GroupInfo")
+		return
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
 	defer cancel()
 	cfg.GroupInfo(ctx, &nmprotos.GroupInfoMessage{
@@ -286,7 +304,12 @@ func (nm *NodeManager) SendGroupInfo() {
 }
 
 func (nm *NodeManager) SendReady(nodeID string) {
-	cfg := nm.gorumsProvider.NodeManagerConfig()
+	cfg, ok := nm.gorumsProvider.NodeManagerConfig()
+	if !ok {
+		nm.logger.Info("no nodes in config, skip sending Ready",
+			slog.String("fn", "nm.SendReady"))
+		return
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
 	defer cancel()
 
@@ -330,7 +353,7 @@ func (nm *NodeManager) Join(ctx gorums.ServerCtx, request *nmprotos.JoinRequest)
 	children := nm.Children()
 
 	// respond with one of the children's addresses if max fanout has been reached
-	if len(children) == nm.fanout {
+	if len(children) == consts.Fanout {
 		nextPathID := nm.NextJoinID()
 		nextPath, _ := nm.neighbours.Get(nextPathID)
 		response.OK = false
@@ -411,13 +434,20 @@ func (nm *NodeManager) GroupInfo(ctx gorums.ServerCtx, request *nmprotos.GroupIn
 		return
 	}
 	if !ok {
-		nm.logger.Error("received group info from unknown node",
+		// this warning will trigger if another node has sent its ready signal to node 'a' before this node has
+		// sent its ready signal to 'a' in the join process. This is expected when many nodes are
+		// joining the network concurrently. All group info will be distributed regardless of this.
+		nm.logger.Warn("received group info from unknown node",
 			slog.String("id", request.GetGroupID()))
 		return
 	}
 
 	newMembers := make([]GroupMember, 0)
 	for _, member := range request.GetMembers() {
+		if member.ID == nm.id {
+			nm.logger.Debug("group member is self, skipping")
+			continue
+		}
 		newMembers = append(newMembers, NewGroupMember(
 			member.GetID(),
 			member.GetAddress(),

@@ -53,7 +53,7 @@ func NewNode(id string, rpcAddr string, logFile io.Writer) *Node {
 	logger := slog.New(logHandler).With(slog.Group("node", slog.String("id", id)))
 	eventBus := eventbus.New(logger)
 	gorumsProvider := gorumsprovider.New(logger)
-	nodeManager := nodemanager.New(id, rpcAddr, consts.Fanout, logger, eventBus, gorumsProvider)
+	nodeManager := nodemanager.New(id, rpcAddr, logger, eventBus, gorumsProvider)
 	failureDetector := failuredetector.New(id, logger, nodeManager, eventBus, gorumsProvider)
 	storageService := storage.NewStorageService(id, logger, nodeManager, eventBus, gorumsProvider)
 

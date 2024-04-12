@@ -4,13 +4,10 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/relab/gorums"
-	"github.com/vidarandrebo/oncetree/nodemanager/nmqspec"
 	fdprotos "github.com/vidarandrebo/oncetree/protos/failuredetector"
 	kvsprotos "github.com/vidarandrebo/oncetree/protos/keyvaluestorage"
 	"github.com/vidarandrebo/oncetree/protos/node"
 	nmprotos "github.com/vidarandrebo/oncetree/protos/nodemanager"
-	"github.com/vidarandrebo/oncetree/storage/sqspec"
 )
 
 // GorumsProvider manages gorums managers and provides gorums configs
@@ -31,18 +28,16 @@ func New(logger *slog.Logger) *GorumsProvider {
 
 // SetNodes updates all configurations to contain the input nodes
 func (gp *GorumsProvider) SetNodes(nodes map[string]uint32) {
+	if len(nodes) == 0 {
+		gp.logger.Warn("no nodes in node-map, skipping config creation")
+		return
+	}
 	gp.mut.Lock()
 	defer gp.mut.Unlock()
 	var err error
 
 	// NodeManager
-	gp.configurations.nmConfig, err = gp.managers.nmManager.NewConfiguration(
-		&nmqspec.QSpec{
-			NumNodes: len(nodes),
-		},
-		gorums.WithNodeMap(nodes),
-	)
-
+	gp.configurations.nmConfig, err = gp.managers.newNodeManagerConfig(nodes)
 	if err != nil {
 		gp.logger.Error("failed to create nodemanager config", "err", err)
 	} else {
@@ -50,9 +45,7 @@ func (gp *GorumsProvider) SetNodes(nodes map[string]uint32) {
 	}
 
 	// Node
-	gp.configurations.nodeConfig, err = gp.managers.nodeManager.NewConfiguration(
-		gorums.WithNodeMap(nodes),
-	)
+	gp.configurations.nodeConfig, err = gp.managers.newNodeConfig(nodes)
 	if err != nil {
 		gp.logger.Error("failed to create node config", "err", err)
 	} else {
@@ -60,12 +53,7 @@ func (gp *GorumsProvider) SetNodes(nodes map[string]uint32) {
 	}
 
 	// StorageService
-	gp.configurations.kvsConfig, err = gp.managers.kvsManager.NewConfiguration(
-		&sqspec.QSpec{
-			NumNodes: len(nodes),
-		},
-		gorums.WithNodeMap(nodes),
-	)
+	gp.configurations.kvsConfig, err = gp.managers.newKVSConfig(nodes)
 	if err != nil {
 		gp.logger.Error("failed to create storage config", "err", err)
 	} else {
@@ -81,32 +69,46 @@ func (gp *GorumsProvider) SetNodes(nodes map[string]uint32) {
 	}
 }
 
-func (gp *GorumsProvider) FailureDetectorConfig() *fdprotos.Configuration {
+func (gp *GorumsProvider) FailureDetectorConfig() (*fdprotos.Configuration, bool) {
 	gp.mut.RLock()
 	defer gp.mut.RUnlock()
-	return gp.configurations.fdConfig
+	if gp.configurations.fdConfig == nil {
+		return nil, false
+	}
+	return gp.configurations.fdConfig, true
 }
 
-func (gp *GorumsProvider) NodeManagerConfig() *nmprotos.Configuration {
+func (gp *GorumsProvider) NodeManagerConfig() (*nmprotos.Configuration, bool) {
 	gp.mut.RLock()
 	defer gp.mut.RUnlock()
-	return gp.configurations.nmConfig
+	if gp.configurations.nmConfig == nil {
+		return nil, false
+	}
+	return gp.configurations.nmConfig, true
 }
 
-func (gp *GorumsProvider) NodeConfig() *node.Configuration {
+func (gp *GorumsProvider) NodeConfig() (*node.Configuration, bool) {
 	gp.mut.RLock()
 	defer gp.mut.RUnlock()
-	return gp.configurations.nodeConfig
+	if gp.configurations.nodeConfig == nil {
+		return nil, false
+	}
+	return gp.configurations.nodeConfig, true
 }
 
-func (gp *GorumsProvider) StorageConfig() *kvsprotos.Configuration {
+func (gp *GorumsProvider) StorageConfig() (*kvsprotos.Configuration, bool) {
 	gp.mut.RLock()
 	defer gp.mut.RUnlock()
-	return gp.configurations.kvsConfig
+	if gp.configurations.kvsConfig == nil {
+		return nil, false
+	}
+	return gp.configurations.kvsConfig, true
 }
 
 // Reset deletes existing manager and configs, then it creates new ones
 func (gp *GorumsProvider) Reset() {
-	gp.managers.recreate()
+	gp.mut.Lock()
+	defer gp.mut.Unlock()
+	gp.managers = gp.managers.recreate(gp.logger)
 	gp.configurations = newConfigurations()
 }

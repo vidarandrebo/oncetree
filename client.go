@@ -19,7 +19,10 @@ func NewClient(nodes map[string]uint32) *Client {
 }
 
 func (c *Client) Run() {
-	cfg := c.gorumsProvider.NodeConfig()
+	cfg, ok := c.gorumsProvider.NodeConfig()
+	if !ok {
+		return
+	}
 	node, exists := cfg.Node(0)
 	if !exists {
 		panic("node does not exists")

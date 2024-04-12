@@ -54,7 +54,12 @@ func (ss *StorageService) shareAll(nodeID string) {
 		ss.logger.Error("did not find neighbour", "id", nodeID)
 		return
 	}
-	gorumsConfig := ss.configProvider.StorageConfig()
+	gorumsConfig, configExists := ss.configProvider.StorageConfig()
+	if !configExists {
+		ss.logger.Error("storageconfig does not exist",
+			slog.String("fn", "ss.shareAll"))
+		return
+	}
 	node, ok := gorumsConfig.Node(neighbour.GorumsID)
 	if !ok {
 		ss.logger.Error(
@@ -105,7 +110,12 @@ func (ss *StorageService) sendGossip(originID string, key int64, values map[stri
 		slog.Int64("writeID", writeID),
 	)
 	sent := false
-	gorumsConfig := ss.configProvider.StorageConfig()
+	gorumsConfig, configExists := ss.configProvider.StorageConfig()
+	if !configExists {
+		ss.logger.Error("storageconfig does not exist",
+			slog.String("fn", "ss.shareAll"))
+		return
+	}
 	for _, gorumsNode := range gorumsConfig.Nodes() {
 		nodeID, ok := ss.nodeManager.NodeID(gorumsNode.ID())
 		if !ok {
