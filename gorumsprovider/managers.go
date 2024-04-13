@@ -1,6 +1,9 @@
 package gorumsprovider
 
 import (
+	"log/slog"
+	"time"
+
 	"github.com/relab/gorums"
 	"github.com/vidarandrebo/oncetree/consts"
 	"github.com/vidarandrebo/oncetree/failuredetector/fdqspec"
@@ -12,8 +15,6 @@ import (
 	"github.com/vidarandrebo/oncetree/storage/sqspec"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"log/slog"
-	"time"
 )
 
 type managers struct {
@@ -80,6 +81,7 @@ func (m *managers) newFDConfig(nodes map[string]uint32) (*fdprotos.Configuration
 	)
 	return cfg, err
 }
+
 func (m *managers) newKVSConfig(nodes map[string]uint32) (*kvsprotos.Configuration, error) {
 	cfg, err := m.kvsManager.NewConfiguration(
 		&sqspec.QSpec{
@@ -96,6 +98,7 @@ func (m *managers) newNodeConfig(nodes map[string]uint32) (*node.Configuration, 
 	)
 	return cfg, err
 }
+
 func (m *managers) newNodeManagerConfig(nodes map[string]uint32) (*nmprotos.Configuration, error) {
 	cfg, err := m.nmManager.NewConfiguration(
 		&nmqspec.QSpec{

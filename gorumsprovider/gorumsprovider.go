@@ -87,6 +87,11 @@ func (gp *GorumsProvider) NodeManagerConfig() (*nmprotos.Configuration, bool) {
 	return gp.configurations.nmConfig, true
 }
 
+func (gp *GorumsProvider) CustomNodeManagerConfig(gorumsMap map[string]uint32) (*nmprotos.Configuration, error) {
+	cfg, err := gp.managers.newNodeManagerConfig(gorumsMap)
+	return cfg, err
+}
+
 func (gp *GorumsProvider) NodeConfig() (*node.Configuration, bool) {
 	gp.mut.RLock()
 	defer gp.mut.RUnlock()

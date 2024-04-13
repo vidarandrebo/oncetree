@@ -23,7 +23,7 @@ func (c *Client) Run() {
 	if !ok {
 		return
 	}
-	node, exists := cfg.Node(0)
+	node, exists := cfg.Node(1)
 	if !exists {
 		panic("node does not exists")
 	}

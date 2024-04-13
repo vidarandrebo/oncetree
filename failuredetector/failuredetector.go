@@ -65,6 +65,7 @@ func (fd *FailureDetector) SetNodesFromManager() {
 	for _, neighbour := range fd.nodeManager.Neighbours() {
 		if (neighbour.Value.Role == nodemanager.Parent) || (neighbour.Value.Role == nodemanager.Child) {
 			fd.nodes.Add(neighbour.Key)
+			fd.alive.Increment(neighbour.Key, 1)
 		}
 	}
 }
@@ -134,6 +135,7 @@ func (fd *FailureDetector) sendHeartbeat() {
 	if !ok {
 		fd.logger.Error("failed to retrieve config",
 			"fn", "fd.sendHeartbeat")
+		return
 	}
 	msg := fdprotos.HeartbeatMessage{NodeID: fd.id}
 	ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
