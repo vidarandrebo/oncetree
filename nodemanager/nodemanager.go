@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"reflect"
 	"slices"
+	"sort"
 	"sync"
 
 	"github.com/vidarandrebo/oncetree/failuredetector/fdevents"
@@ -89,6 +90,10 @@ func (nm *NodeManager) HandleFailureEvent(e fdevents.NodeFailedEvent) {
 		return
 	}
 	for _, groupMember := range failedNode.Group.members {
+		if groupMember.ID == nm.id {
+			nm.logger.Debug("group member is self, skipping")
+			continue
+		}
 		neighbour, neighbourExists := nm.Neighbour(groupMember.ID)
 		if !neighbourExists {
 			nm.AddNeighbour(groupMember.ID, groupMember.Address, Recovery)
@@ -97,6 +102,11 @@ func (nm *NodeManager) HandleFailureEvent(e fdevents.NodeFailedEvent) {
 				slog.String("id", neighbour.ID))
 			panic("node should not exist from before") // TODO - remove in prod
 		}
+	}
+	recoveryMap := nm.GorumsRecoveryMap()
+	if len(recoveryMap) == 0 {
+		nm.logger.Info("no need to send prepare, only one node left in group")
+		return
 	}
 	cfg, err := nm.gorumsProvider.CustomNodeManagerConfig(nm.GorumsRecoveryMap())
 	if err != nil {
@@ -380,7 +390,7 @@ func (nm *NodeManager) SendReady(nodeID string) {
 // If max fanout is NOT reached, the node will respond OK and include its ID.
 // If max fanout is reached, the node will respond NOT OK and include the address
 // of one of its children. The node will alternate between its children in repeated calls to Join.
-func (nm *NodeManager) Join(ctx gorums.ServerCtx, request *nmprotos.JoinRequest) (response *nmprotos.JoinResponse, err error) {
+func (nm *NodeManager) Join(ctx gorums.ServerCtx, request *nmprotos.JoinRequest) (*nmprotos.JoinResponse, error) {
 	nm.logger.Debug(
 		"RPC Join",
 		slog.String("id", request.GetNodeID()),
@@ -388,7 +398,7 @@ func (nm *NodeManager) Join(ctx gorums.ServerCtx, request *nmprotos.JoinRequest)
 	)
 	nm.joinMut.Lock()
 	defer nm.joinMut.Unlock()
-	response = &nmprotos.JoinResponse{
+	response := &nmprotos.JoinResponse{
 		OK:          false,
 		NodeID:      nm.id,
 		NextAddress: "",
@@ -438,7 +448,7 @@ func (nm *NodeManager) NextJoinID() string {
 
 // Ready is used to signal to the parent that the newly joined node has created a gorums config and is ready to participate in the protocol.
 // A NeighbourReadyEvent is pushed to the eventbus
-func (nm *NodeManager) Ready(ctx gorums.ServerCtx, request *nmprotos.ReadyMessage) (response *nmprotos.ReadyMessage, err error) {
+func (nm *NodeManager) Ready(ctx gorums.ServerCtx, request *nmprotos.ReadyMessage) (*nmprotos.ReadyMessage, error) {
 	nm.logger.Debug(
 		"RPC Ready",
 		slog.String("id", request.GetNodeID()),
@@ -453,7 +463,7 @@ func (nm *NodeManager) Ready(ctx gorums.ServerCtx, request *nmprotos.ReadyMessag
 	return &nmprotos.ReadyMessage{OK: true, NodeID: nm.id}, nil
 }
 
-func (nm *NodeManager) Prepare(ctx gorums.ServerCtx, request *nmprotos.PrepareMessage) (response *nmprotos.PromiseMessage, err error) {
+func (nm *NodeManager) Prepare(ctx gorums.ServerCtx, request *nmprotos.PrepareMessage) (*nmprotos.PromiseMessage, error) {
 	nm.logger.Info("Prepare RPC",
 		"id", request.NodeID)
 	node, ok := nm.Neighbour(request.GetGroupID())
@@ -461,18 +471,34 @@ func (nm *NodeManager) Prepare(ctx gorums.ServerCtx, request *nmprotos.PrepareMe
 		return &nmprotos.PromiseMessage{OK: false}, nil
 	}
 
-	// sort member IDs alphabetically, then return OK if the id from the request is the first in the collection
 	for _, member := range node.Group.members {
-		if member.ID == request.GetNodeID() {
-			if member.Role == Parent {
+		if member.Role == Parent {
+			if member.ID == request.GetNodeID() {
+				nm.logger.Info("member is Parent, send leader promise",
+					slog.String("id", request.GetNodeID()))
 				return &nmprotos.PromiseMessage{OK: true}, nil
+			} else {
+				nm.logger.Info("member is not Parent, deny as leader",
+					slog.String("id", request.GetNodeID()))
+				return &nmprotos.PromiseMessage{OK: false}, nil
 			}
 		}
+	}
+
+	// sort member IDs alphabetically, then return OK if the id from the request is the first in the collection
+	nm.logger.Info("failed node has no parent, using lowest ID node as leader")
+	memberIDs := node.GroupMemberIDs()
+	sort.Strings(memberIDs)
+	rank := slices.Index(memberIDs, request.GetNodeID())
+	if rank == 0 {
+		nm.logger.Info("member has lowest ID, send leader promise",
+			slog.String("id", request.GetNodeID()))
+		return &nmprotos.PromiseMessage{OK: true}, nil
 	}
 	return &nmprotos.PromiseMessage{OK: false}, nil
 }
 
-func (nm *NodeManager) Accept(ctx gorums.ServerCtx, request *nmprotos.AcceptMessage) (response *nmprotos.LearnMessage, err error) {
+func (nm *NodeManager) Accept(ctx gorums.ServerCtx, request *nmprotos.AcceptMessage) (*nmprotos.LearnMessage, error) {
 	// TODO implement me
 	panic("implement me")
 }
@@ -501,10 +527,6 @@ func (nm *NodeManager) GroupInfo(ctx gorums.ServerCtx, request *nmprotos.GroupIn
 
 	newMembers := make([]GroupMember, 0)
 	for _, member := range request.GetMembers() {
-		if member.ID == nm.id {
-			nm.logger.Debug("group member is self, skipping")
-			continue
-		}
 		newMembers = append(newMembers, NewGroupMember(
 			member.GetID(),
 			member.GetAddress(),

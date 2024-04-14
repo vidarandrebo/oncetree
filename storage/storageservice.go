@@ -163,7 +163,7 @@ func (ss *StorageService) sendGossip(originID string, key int64, values map[stri
 }
 
 // Write RPC is used to set the local value at a given key for a single node
-func (ss *StorageService) Write(ctx gorums.ServerCtx, request *kvsprotos.WriteRequest) (response *emptypb.Empty, err error) {
+func (ss *StorageService) Write(ctx gorums.ServerCtx, request *kvsprotos.WriteRequest) (*emptypb.Empty, error) {
 	ss.logger.Debug("RPC Write", "key", request.GetKey(), "value", request.GetValue(), "writeID", request.GetWriteID())
 	ts := ss.timestamp.Lock()
 	*ts++
@@ -202,7 +202,7 @@ func (ss *StorageService) Write(ctx gorums.ServerCtx, request *kvsprotos.WriteRe
 	return &emptypb.Empty{}, nil
 }
 
-func (ss *StorageService) Read(ctx gorums.ServerCtx, request *kvsprotos.ReadRequest) (response *kvsprotos.ReadResponse, err error) {
+func (ss *StorageService) Read(ctx gorums.ServerCtx, request *kvsprotos.ReadRequest) (*kvsprotos.ReadResponse, error) {
 	value, err := ss.storage.ReadValue(request.Key)
 	if err != nil {
 		return &kvsprotos.ReadResponse{Value: 0}, err
@@ -211,7 +211,7 @@ func (ss *StorageService) Read(ctx gorums.ServerCtx, request *kvsprotos.ReadRequ
 }
 
 // ReadLocal rpc is used for checking that local values are propagated as intended
-func (ss *StorageService) ReadLocal(ctx gorums.ServerCtx, request *kvsprotos.ReadLocalRequest) (response *kvsprotos.ReadResponse, err error) {
+func (ss *StorageService) ReadLocal(ctx gorums.ServerCtx, request *kvsprotos.ReadLocalRequest) (*kvsprotos.ReadResponse, error) {
 	ss.logger.Debug("ReadLocal rpc",
 		slog.Int64("key", request.GetKey()),
 		slog.String("nodeID", request.GetNodeID()))
@@ -230,12 +230,12 @@ func (ss *StorageService) ReadAll(ctx gorums.ServerCtx, request *kvsprotos.ReadR
 	return &kvsprotos.ReadAllResponse{Value: map[string]int64{ss.id: value}}, nil
 }
 
-func (ss *StorageService) PrintState(ctx gorums.ServerCtx, request *emptypb.Empty) (response *emptypb.Empty, err error) {
+func (ss *StorageService) PrintState(ctx gorums.ServerCtx, request *emptypb.Empty) (*emptypb.Empty, error) {
 	// ss.logger.Println(ss.storage.data)
 	return &emptypb.Empty{}, nil
 }
 
-func (ss *StorageService) Gossip(ctx gorums.ServerCtx, request *kvsprotos.GossipMessage) (response *emptypb.Empty, err error) {
+func (ss *StorageService) Gossip(ctx gorums.ServerCtx, request *kvsprotos.GossipMessage) (*emptypb.Empty, error) {
 	ss.logger.Debug(
 		"RPC Gossip",
 		slog.Int64("key", request.GetKey()),
