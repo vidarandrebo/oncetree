@@ -36,22 +36,21 @@ message GroupInfoMessage {
 }
 
 message PrepareMessage {
-    string NodeID = 1;
-    string GroupID = 2;
+    string NodeID = 1; // The sending node's ID
+    string GroupID = 2; // The failed node's ID, or groupID
+    int64 Epoch = 3; // The groups Epoch
 }
 message PromiseMessage {bool OK = 1;}
 message AcceptMessage {
-    int64 Epoch = 1;
-    int64 Key = 2;
-    int64 Value = 3;
+    string NodeID = 1;
+    string GroupID = 2; // The failed node's ID, or groupID
+    map<string, string> NewParent = 3; // map NodeID -> NewParentID
 }
 message LearnMessage {
-    int64 Epoch = 1;
-    int64 Key = 2;
+    bool OK = 1;
 }
 message CommitMessage {
-    int64 Epoch = 1;
-    int64 Key = 2;
+    string GroupID = 1;
 }
 
 

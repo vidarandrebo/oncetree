@@ -28,29 +28,31 @@ import (
 )
 
 type NodeManager struct {
-	id             string
-	address        string
-	neighbours     *maps.ConcurrentMap[string, *Neighbour]
-	epoch          *mutex.RWMutex[int64]
-	nextGorumsID   *mutex.RWMutex[uint32]
-	lastJoinID     *mutex.RWMutex[string]
-	joinMut        sync.Mutex
-	logger         *slog.Logger
-	eventBus       *eventbus.EventBus
-	gorumsProvider *gorumsprovider.GorumsProvider
+	id              string
+	address         string
+	neighbours      *maps.ConcurrentMap[string, *Neighbour]
+	epoch           *mutex.RWMutex[int64]
+	nextGorumsID    *mutex.RWMutex[uint32]
+	lastJoinID      *mutex.RWMutex[string]
+	recoveryProcess *mutex.RWMutex[*RecoveryProcess]
+	joinMut         sync.Mutex
+	logger          *slog.Logger
+	eventBus        *eventbus.EventBus
+	gorumsProvider  *gorumsprovider.GorumsProvider
 }
 
 func New(id string, address string, logger *slog.Logger, eventBus *eventbus.EventBus, gorumsProvider *gorumsprovider.GorumsProvider) *NodeManager {
 	nm := &NodeManager{
-		id:             id,
-		address:        address,
-		neighbours:     maps.NewConcurrentMap[string, *Neighbour](),
-		nextGorumsID:   mutex.New[uint32](0),
-		lastJoinID:     mutex.New(""),
-		epoch:          mutex.New[int64](0),
-		logger:         logger.With(slog.Group("node", slog.String("module", "nodemanager"))),
-		eventBus:       eventBus,
-		gorumsProvider: gorumsProvider,
+		id:              id,
+		address:         address,
+		neighbours:      maps.NewConcurrentMap[string, *Neighbour](),
+		nextGorumsID:    mutex.New[uint32](0),
+		lastJoinID:      mutex.New(""),
+		epoch:           mutex.New[int64](0),
+		logger:          logger.With(slog.Group("node", slog.String("module", "nodemanager"))),
+		recoveryProcess: mutex.New[*RecoveryProcess](nil),
+		eventBus:        eventBus,
+		gorumsProvider:  gorumsProvider,
 	}
 	eventBus.RegisterHandler(reflect.TypeOf(nmevents.NeighbourReadyEvent{}),
 		func(e any) {
@@ -74,15 +76,26 @@ func New(id string, address string, logger *slog.Logger, eventBus *eventbus.Even
 	eventBus.RegisterHandler(reflect.TypeOf(fdevents.NodeFailedEvent{}),
 		func(e any) {
 			if event, ok := e.(fdevents.NodeFailedEvent); ok {
-				nm.HandleFailureEvent(event)
+				nm.logger.Info("handling node failure event",
+					slog.String("id", event.NodeID))
+				nm.SendPrepare(event)
 			}
 		})
 	return nm
 }
 
-func (nm *NodeManager) HandleFailureEvent(e fdevents.NodeFailedEvent) {
-	nm.logger.Info("handling node failure event",
-		slog.String("id", e.NodeID))
+func (nm *NodeManager) SendPrepare(e fdevents.NodeFailedEvent) {
+	nm.logger.Info("sending prepare")
+	recoveryProcessRef := nm.recoveryProcess.Lock()
+	defer nm.recoveryProcess.Unlock(&recoveryProcessRef)
+
+	if (*recoveryProcessRef != nil) && ((*recoveryProcessRef).GroupID != e.NodeID) {
+		panic("more than 1 concurrent failure, unrecoverable")
+	}
+	if *recoveryProcessRef == nil {
+		*recoveryProcessRef = NewRecoveryProcess(e.NodeID, false)
+	}
+
 	failedNode, ok := nm.neighbours.Get(e.NodeID)
 	if !ok {
 		nm.logger.Error("failed node does not exist",
@@ -120,9 +133,63 @@ func (nm *NodeManager) HandleFailureEvent(e fdevents.NodeFailedEvent) {
 	response, err := cfg.Prepare(ctx, &nmprotos.PrepareMessage{
 		NodeID:  nm.id,
 		GroupID: failedNode.ID,
+		Epoch:   failedNode.Group.epoch,
 	})
 	nm.logger.Info("received response from prepare",
 		slog.Bool("isLeader", response.GetOK()))
+	(*recoveryProcessRef).IsLeader = response.GetOK()
+
+	if response.GetOK() {
+		nm.eventBus.PushTask(nm.SendAccept)
+	}
+}
+
+func (nm *NodeManager) SendAccept() {
+	nm.logger.Info("sending accept")
+
+	recoveryProcessRef := nm.recoveryProcess.Lock()
+	defer nm.recoveryProcess.Unlock(&recoveryProcessRef)
+
+	ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
+	defer cancel()
+	cfg, err := nm.gorumsProvider.CustomNodeManagerConfig(nm.GorumsRecoveryMap())
+	if err != nil {
+		nm.logger.Error("creation of recovery gorums config failed",
+			slog.Any("err", err))
+		panic("creation of recovery gorums config failed") // TODO - remove in prod
+	}
+	node, ok := nm.neighbours.Get((*recoveryProcessRef).GroupID)
+
+	if !ok {
+		panic("failed node not found")
+	}
+
+	// here we create the new tree structure, for the sake of simplicity, we just map all nodes to have self as parent,
+	// but in more complex re-config scenario, we could nest the tree structure
+	// we would then however make sure we don't introduce loops in the tree.
+	newParent := make(map[string]string) // nodeID -> parentID
+	for _, member := range node.GroupMemberIDs() {
+		newParent[member] = nm.id
+	}
+
+	learn, err := cfg.Accept(ctx, &nmprotos.AcceptMessage{
+		NodeID:    nm.id,
+		GroupID:   (*recoveryProcessRef).GroupID,
+		NewParent: newParent,
+	})
+	if err != nil {
+		nm.logger.Error("Accept failed",
+			slog.Any("err", err))
+		panic("accept failed")
+	}
+
+	if learn.GetOK() {
+		nm.eventBus.PushTask(nm.SendCommit)
+	}
+}
+
+func (nm *NodeManager) SendCommit() {
+	nm.logger.Info("sending commit")
 }
 
 func (nm *NodeManager) HandleNeighbourAddedEvent(e nmevents.NeighbourAddedEvent) {
@@ -468,7 +535,23 @@ func (nm *NodeManager) Prepare(ctx gorums.ServerCtx, request *nmprotos.PrepareMe
 		"id", request.NodeID)
 	node, ok := nm.Neighbour(request.GetGroupID())
 	if !ok {
+		// this could mean a delayed prepare message from one of the nodes.
 		return &nmprotos.PromiseMessage{OK: false}, nil
+	}
+
+	if node.Group.epoch != request.Epoch {
+		panic("node's group info is not up to date, unrecoverable")
+	}
+
+	recoveryProcessRef := nm.recoveryProcess.Lock()
+	defer nm.recoveryProcess.Unlock(&recoveryProcessRef)
+	if (*recoveryProcessRef != nil) && ((*recoveryProcessRef).GroupID != request.GetGroupID()) {
+		nm.logger.Error("more than 1 concurrent failure, unrecoverable",
+			slog.String("id", request.GetGroupID()))
+		panic("more than 1 concurrent failure, unrecoverable")
+	}
+	if *recoveryProcessRef == nil {
+		*recoveryProcessRef = NewRecoveryProcess(request.GetGroupID(), false)
 	}
 
 	for _, member := range node.Group.members {
@@ -476,6 +559,7 @@ func (nm *NodeManager) Prepare(ctx gorums.ServerCtx, request *nmprotos.PrepareMe
 			if member.ID == request.GetNodeID() {
 				nm.logger.Info("member is Parent, send leader promise",
 					slog.String("id", request.GetNodeID()))
+				(*recoveryProcessRef).LeaderID = request.GetNodeID()
 				return &nmprotos.PromiseMessage{OK: true}, nil
 			} else {
 				nm.logger.Info("member is not Parent, deny as leader",
@@ -493,14 +577,47 @@ func (nm *NodeManager) Prepare(ctx gorums.ServerCtx, request *nmprotos.PrepareMe
 	if rank == 0 {
 		nm.logger.Info("member has lowest ID, send leader promise",
 			slog.String("id", request.GetNodeID()))
+		(*recoveryProcessRef).LeaderID = request.GetNodeID()
 		return &nmprotos.PromiseMessage{OK: true}, nil
 	}
 	return &nmprotos.PromiseMessage{OK: false}, nil
 }
 
 func (nm *NodeManager) Accept(ctx gorums.ServerCtx, request *nmprotos.AcceptMessage) (*nmprotos.LearnMessage, error) {
-	// TODO implement me
-	panic("implement me")
+	nm.logger.Info("Accept RPC",
+		"id", request.GetNodeID())
+	recoveryProcessRef := nm.recoveryProcess.Lock()
+	defer nm.recoveryProcess.Unlock(&recoveryProcessRef)
+
+	// no ongoing recovery process
+	if (*recoveryProcessRef) == nil {
+		return &nmprotos.LearnMessage{OK: false}, nil
+	}
+	// requester is not leader
+	if (*recoveryProcessRef).LeaderID != request.GetNodeID() {
+		return &nmprotos.LearnMessage{OK: false}, nil
+	}
+
+	if (*recoveryProcessRef).GroupID != request.GetGroupID() {
+		nm.logger.Error("more than 1 concurrent failure, unrecoverable",
+			slog.String("id", request.GetGroupID()))
+		panic("more than 1 concurrent failure, unrecoverable")
+	}
+
+	failedNode, ok := nm.neighbours.Get(request.GetGroupID())
+	if !ok {
+		return &nmprotos.LearnMessage{OK: false}, nil
+	}
+	newParent := request.GetNewParent()[nm.id]
+
+	// new parent has to be part of the recovery group
+	containsNewParent := slices.Contains(failedNode.GroupMemberIDs(), newParent)
+	if !containsNewParent {
+		return &nmprotos.LearnMessage{OK: false}, nil
+	}
+
+	(*recoveryProcessRef).NewParent = newParent
+	return &nmprotos.LearnMessage{OK: true}, nil
 }
 
 func (nm *NodeManager) Commit(ctx gorums.ServerCtx, request *nmprotos.CommitMessage) {

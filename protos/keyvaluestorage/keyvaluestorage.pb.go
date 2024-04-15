@@ -76,7 +76,7 @@ type ReadLocalRequest struct {
 	unknownFields protoimpl.UnknownFields
 
 	Key    int64  `protobuf:"varint,1,opt,name=Key,proto3" json:"Key,omitempty"`
-	NodeID string `protobuf:"bytes,2,opt,name=NodeID,proto3" json:"NodeID,omitempty"`
+	NodeID string `protobuf:"bytes,2,opt,name=GroupID,proto3" json:"GroupID,omitempty"`
 }
 
 func (x *ReadLocalRequest) Reset() {
@@ -288,7 +288,7 @@ type GossipMessage struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	NodeID         string `protobuf:"bytes,1,opt,name=NodeID,proto3" json:"NodeID,omitempty"`
+	NodeID         string `protobuf:"bytes,1,opt,name=GroupID,proto3" json:"GroupID,omitempty"`
 	Key            int64  `protobuf:"varint,2,opt,name=Key,proto3" json:"Key,omitempty"`
 	AggValue       int64  `protobuf:"varint,3,opt,name=AggValue,proto3" json:"AggValue,omitempty"`
 	AggTimestamp   int64  `protobuf:"varint,4,opt,name=AggTimestamp,proto3" json:"AggTimestamp,omitempty"`

@@ -82,7 +82,7 @@ func (n *Node) setupEventHandlers() {
 }
 
 func (n *Node) nodeFailedHandler(e fdevents.NodeFailedEvent) {
-	// n.logger.Printf("node with id %s has failed", e.NodeID)
+	// n.logger.Printf("node with id %s has failed", e.GroupID)
 }
 
 func (n *Node) startGorumsServer(addr string) {
