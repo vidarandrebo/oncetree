@@ -10,7 +10,9 @@ import (
 	"sort"
 	"sync"
 
+	"github.com/vidarandrebo/oncetree/concurrent/hashset"
 	"github.com/vidarandrebo/oncetree/failuredetector/fdevents"
+	"github.com/vidarandrebo/oncetree/nodemanager/nmenums"
 	"github.com/vidarandrebo/oncetree/nodemanager/nmevents"
 
 	"github.com/vidarandrebo/oncetree/gorumsprovider"
@@ -35,6 +37,7 @@ type NodeManager struct {
 	nextGorumsID    *mutex.RWMutex[uint32]
 	lastJoinID      *mutex.RWMutex[string]
 	recoveryProcess *mutex.RWMutex[*RecoveryProcess]
+	blackList       *hashset.ConcurrentHashSet[string]
 	joinMut         sync.Mutex
 	logger          *slog.Logger
 	eventBus        *eventbus.EventBus
@@ -51,6 +54,7 @@ func New(id string, address string, logger *slog.Logger, eventBus *eventbus.Even
 		epoch:           mutex.New[int64](0),
 		logger:          logger.With(slog.Group("node", slog.String("module", "nodemanager"))),
 		recoveryProcess: mutex.New[*RecoveryProcess](nil),
+		blackList:       hashset.New[string](),
 		eventBus:        eventBus,
 		gorumsProvider:  gorumsProvider,
 	}
@@ -92,6 +96,11 @@ func (nm *NodeManager) SendPrepare(e fdevents.NodeFailedEvent) {
 	if (*recoveryProcessRef != nil) && ((*recoveryProcessRef).GroupID != e.NodeID) {
 		panic("more than 1 concurrent failure, unrecoverable")
 	}
+	if nm.blackList.Contains(e.NodeID) {
+		nm.logger.Info("node failure already handled, skipping",
+			slog.String("id", e.NodeID))
+		return
+	}
 	if *recoveryProcessRef == nil {
 		*recoveryProcessRef = NewRecoveryProcess(e.NodeID, false)
 	}
@@ -107,18 +116,15 @@ func (nm *NodeManager) SendPrepare(e fdevents.NodeFailedEvent) {
 			nm.logger.Debug("group member is self, skipping")
 			continue
 		}
-		neighbour, neighbourExists := nm.Neighbour(groupMember.ID)
+		_, neighbourExists := nm.Neighbour(groupMember.ID)
 		if !neighbourExists {
-			nm.AddNeighbour(groupMember.ID, groupMember.Address, Recovery)
-		} else {
-			nm.logger.Error("node should not exist from before",
-				slog.String("id", neighbour.ID))
-			panic("node should not exist from before") // TODO - remove in prod
+			nm.AddNeighbour(groupMember.ID, groupMember.Address, nmenums.Recovery)
 		}
 	}
 	recoveryMap := nm.GorumsRecoveryMap()
 	if len(recoveryMap) == 0 {
 		nm.logger.Info("no need to send prepare, only one node left in group")
+		// TODO - handle leaf node case
 		return
 	}
 	cfg, err := nm.gorumsProvider.CustomNodeManagerConfig(nm.GorumsRecoveryMap())
@@ -189,11 +195,49 @@ func (nm *NodeManager) SendAccept() {
 }
 
 func (nm *NodeManager) SendCommit() {
-	nm.logger.Info("sending commit")
+	recoveryMap := nm.GorumsRecoveryMap()
+	cfg, err := nm.gorumsProvider.CustomNodeManagerConfig(recoveryMap)
+	if err != nil {
+		panic("could not create gorums config for recovery")
+	}
+	recoveryProcessRef := nm.recoveryProcess.Lock()
+	defer nm.recoveryProcess.Unlock(&recoveryProcessRef)
+	ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
+	defer cancel()
+	cfg.Commit(ctx, &nmprotos.CommitMessage{GroupID: (*recoveryProcessRef).GroupID})
+	failedNode, ok := nm.neighbours.Get((*recoveryProcessRef).GroupID)
+	if !ok {
+		panic("could not find failed node in neighbour map")
+	}
+	newChildren := make([]string, 0)
+	for _, member := range failedNode.GroupMemberIDs() {
+		if member == nm.id {
+			continue
+		}
+		newChildren = append(newChildren, member)
+	}
+	for _, childID := range newChildren {
+		newChild, ok := nm.neighbours.Get(childID)
+		if !ok {
+			panic("could not find new child in neighbour map")
+		}
+		newChild.Role = nmenums.Child
+	}
+	nm.neighbours.Delete(failedNode.ID)
+	nm.eventBus.PushEvent(nmevents.NewNeigbourRemovedEvent(failedNode.ID))
+	nm.gorumsProvider.Reset()
+	nm.gorumsProvider.SetNodes(nm.GorumsNeighbourMap())
+
+	for _, childID := range newChildren {
+		nm.eventBus.PushEvent(nmevents.NewNeighbourAddedEvent(childID, nmenums.Child))
+	}
+	nm.blackList.Add(failedNode.ID)
+	*recoveryProcessRef = nil
+	// TODO send group info update
 }
 
 func (nm *NodeManager) HandleNeighbourAddedEvent(e nmevents.NeighbourAddedEvent) {
-	nm.logger.Info("added neighbour", "id", e.NodeID)
+	nm.logger.Info("added neighbour", slog.String("id", e.NodeID), slog.Any("role", e.Role))
 }
 
 func (nm *NodeManager) HandleNeighbourReadyEvent(e nmevents.NeighbourReadyEvent) {
@@ -215,7 +259,7 @@ func (nm *NodeManager) NeighbourIDs() []string {
 func (nm *NodeManager) GorumsNeighbourMap() map[string]uint32 {
 	IDs := make(map[string]uint32)
 	for _, neighbour := range nm.neighbours.Values() {
-		if (neighbour.Role == Parent) || (neighbour.Role == Child) {
+		if (neighbour.Role == nmenums.Parent) || (neighbour.Role == nmenums.Child) {
 			IDs[neighbour.Address] = neighbour.GorumsID
 		}
 	}
@@ -225,7 +269,7 @@ func (nm *NodeManager) GorumsNeighbourMap() map[string]uint32 {
 func (nm *NodeManager) GorumsRecoveryMap() map[string]uint32 {
 	IDs := make(map[string]uint32)
 	for _, neighbour := range nm.neighbours.Values() {
-		if neighbour.Role == Recovery {
+		if neighbour.Role == nmenums.Recovery {
 			IDs[neighbour.Address] = neighbour.GorumsID
 		}
 	}
@@ -254,8 +298,8 @@ func (nm *NodeManager) NodeID(gorumsID uint32) (string, bool) {
 // AddNeighbour creates and stores a new neighbour with the provided parameters.
 // The node will be included in all configurations provided by
 // the gorumsProvider after AddNeighbour returns.
-// A NewNeigbourAddedEvent is pushed to eventbus if the node is not temporary
-func (nm *NodeManager) AddNeighbour(nodeID string, address string, role NodeRole) {
+// A NewNeighbourAddedEvent is pushed to eventbus if the node is not temporary
+func (nm *NodeManager) AddNeighbour(nodeID string, address string, role nmenums.NodeRole) {
 	nextID := nm.nextGorumsID.Lock()
 	gorumsID := *nextID
 	*nextID += 1
@@ -263,8 +307,8 @@ func (nm *NodeManager) AddNeighbour(nodeID string, address string, role NodeRole
 	neighbour := NewNeighbour(nodeID, gorumsID, address, role)
 	nm.neighbours.Set(nodeID, neighbour)
 	nm.gorumsProvider.SetNodes(nm.GorumsNeighbourMap())
-	if (role != Tmp) && (role != Recovery) {
-		nm.eventBus.PushEvent(nmevents.NewNeigbourAddedEvent(nodeID))
+	if (role != nmenums.Tmp) && (role != nmenums.Recovery) {
+		nm.eventBus.PushEvent(nmevents.NewNeighbourAddedEvent(nodeID, role))
 	}
 }
 
@@ -282,18 +326,7 @@ func (nm *NodeManager) AllNeighbourIDs() []string {
 func (nm *NodeManager) TmpGorumsMap() map[string]uint32 {
 	gorumsMap := make(map[string]uint32)
 	for _, node := range nm.neighbours.Values() {
-		if node.Role == Tmp {
-			gorumsMap[node.Address] = node.GorumsID
-			break
-		}
-	}
-	return gorumsMap
-}
-
-func (nm *NodeManager) RecoveryGorumsMap() map[string]uint32 {
-	gorumsMap := make(map[string]uint32)
-	for _, node := range nm.neighbours.Values() {
-		if node.Role == Recovery {
+		if node.Role == nmenums.Tmp {
 			gorumsMap[node.Address] = node.GorumsID
 			break
 		}
@@ -304,7 +337,7 @@ func (nm *NodeManager) RecoveryGorumsMap() map[string]uint32 {
 // clearTmp removes all nodes that has a temporary role
 func (nm *NodeManager) clearTmp() {
 	for _, node := range nm.neighbours.Values() {
-		if node.Role == Tmp {
+		if node.Role == nmenums.Tmp {
 			nm.neighbours.Delete(node.ID)
 		}
 	}
@@ -330,7 +363,7 @@ func (nm *NodeManager) ResolveNodeIDFromAddress(address string) (string, error) 
 func (nm *NodeManager) Children() []*Neighbour {
 	children := make([]*Neighbour, 0)
 	for _, neighbour := range nm.neighbours.Values() {
-		if neighbour.Role == Child {
+		if neighbour.Role == nmenums.Child {
 			children = append(children, neighbour)
 		}
 	}
@@ -344,7 +377,7 @@ func (nm *NodeManager) Children() []*Neighbour {
 // Will return nil if the node is the root node, or is not part of a tree
 func (nm *NodeManager) Parent() *Neighbour {
 	for _, neighbour := range nm.neighbours.Values() {
-		if neighbour.Role == Parent {
+		if neighbour.Role == nmenums.Parent {
 			return neighbour
 		}
 	}
@@ -358,7 +391,7 @@ func (nm *NodeManager) SendJoin(knownAddr string) {
 	joined := false
 	for !joined {
 		knownNodeID, _ := uuid.NewV7()
-		nm.AddNeighbour(knownNodeID.String(), knownAddr, Tmp)
+		nm.AddNeighbour(knownNodeID.String(), knownAddr, nmenums.Tmp)
 		ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
 		nm.gorumsProvider.SetNodes(nm.TmpGorumsMap())
 		cfg, ok := nm.gorumsProvider.NodeManagerConfig()
@@ -385,7 +418,7 @@ func (nm *NodeManager) SendJoin(knownAddr string) {
 
 		if response.OK {
 			joined = true
-			nm.AddNeighbour(response.NodeID, knownAddr, Parent)
+			nm.AddNeighbour(response.NodeID, knownAddr, nmenums.Parent)
 			nm.SendReady(response.NodeID)
 		} else {
 			knownAddr = response.NextAddress
@@ -482,7 +515,7 @@ func (nm *NodeManager) Join(ctx gorums.ServerCtx, request *nmprotos.JoinRequest)
 	}
 	response.OK = true
 	response.NodeID = nm.id
-	nm.AddNeighbour(request.NodeID, request.Address, Child)
+	nm.AddNeighbour(request.NodeID, request.Address, nmenums.Child)
 	return response, nil
 }
 
@@ -555,11 +588,18 @@ func (nm *NodeManager) Prepare(ctx gorums.ServerCtx, request *nmprotos.PrepareMe
 	}
 
 	for _, member := range node.Group.members {
-		if member.Role == Parent {
+		if member.Role == nmenums.Parent {
 			if member.ID == request.GetNodeID() {
 				nm.logger.Info("member is Parent, send leader promise",
 					slog.String("id", request.GetNodeID()))
 				(*recoveryProcessRef).LeaderID = request.GetNodeID()
+
+				// leader is added as a recovery node here
+				// it will be converted into a parent node in the end of the recovery session
+				_, neighbourExists := nm.Neighbour(member.ID)
+				if !neighbourExists {
+					nm.AddNeighbour(member.ID, member.Address, nmenums.Recovery)
+				}
 				return &nmprotos.PromiseMessage{OK: true}, nil
 			} else {
 				nm.logger.Info("member is not Parent, deny as leader",
@@ -578,6 +618,19 @@ func (nm *NodeManager) Prepare(ctx gorums.ServerCtx, request *nmprotos.PrepareMe
 		nm.logger.Info("member has lowest ID, send leader promise",
 			slog.String("id", request.GetNodeID()))
 		(*recoveryProcessRef).LeaderID = request.GetNodeID()
+
+		// find member from request in collection
+		for _, member := range node.Group.members {
+			if member.ID != request.GetNodeID() {
+				continue
+			}
+			// leader is added as a recovery node here
+			// it will be converted into a parent node in the end of the recovery session
+			_, neighbourExists := nm.Neighbour(member.ID)
+			if !neighbourExists {
+				nm.AddNeighbour(member.ID, member.Address, nmenums.Recovery)
+			}
+		}
 		return &nmprotos.PromiseMessage{OK: true}, nil
 	}
 	return &nmprotos.PromiseMessage{OK: false}, nil
@@ -621,8 +674,27 @@ func (nm *NodeManager) Accept(ctx gorums.ServerCtx, request *nmprotos.AcceptMess
 }
 
 func (nm *NodeManager) Commit(ctx gorums.ServerCtx, request *nmprotos.CommitMessage) {
-	// TODO implement me
-	panic("implement me")
+	nm.logger.Info("Commit RPC",
+		"failedID", request.GetGroupID())
+	recoveryProcessRef := nm.recoveryProcess.Lock()
+	defer nm.recoveryProcess.Unlock(&recoveryProcessRef)
+	if request.GetGroupID() != (*recoveryProcessRef).GroupID {
+		panic("request's group is not same as stored in recoveryprocess")
+	}
+	newParentID := (*recoveryProcessRef).NewParent
+	newParent, ok := nm.neighbours.Get(newParentID)
+	if !ok {
+		panic("could not find new parent in neighbour map")
+	}
+	newParent.Role = nmenums.Parent
+	nm.neighbours.Delete(request.GetGroupID())
+	nm.blackList.Add(request.GetGroupID())
+	nm.eventBus.PushEvent(nmevents.NewNeigbourRemovedEvent(request.GetGroupID()))
+	nm.gorumsProvider.Reset()
+	nm.gorumsProvider.SetNodes(nm.GorumsNeighbourMap())
+	nm.eventBus.PushEvent(nmevents.NewNeighbourAddedEvent(newParentID, nmenums.Parent))
+	*recoveryProcessRef = nil
+	// TODO send group info update
 }
 
 func (nm *NodeManager) GroupInfo(ctx gorums.ServerCtx, request *nmprotos.GroupInfoMessage) {
@@ -647,7 +719,7 @@ func (nm *NodeManager) GroupInfo(ctx gorums.ServerCtx, request *nmprotos.GroupIn
 		newMembers = append(newMembers, NewGroupMember(
 			member.GetID(),
 			member.GetAddress(),
-			NodeRole(member.GetRole())),
+			nmenums.NodeRole(member.GetRole())),
 		)
 	}
 	node.Group.epoch = request.GetEpoch()

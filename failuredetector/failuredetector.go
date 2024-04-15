@@ -7,6 +7,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/vidarandrebo/oncetree/nodemanager/nmenums"
+
 	"github.com/vidarandrebo/oncetree/failuredetector/fdevents"
 	"github.com/vidarandrebo/oncetree/nodemanager/nmevents"
 
@@ -63,7 +65,7 @@ func (fd *FailureDetector) SetNodesFromManager() {
 	fd.suspected.Clear()
 	fd.alive.Clear()
 	for _, neighbour := range fd.nodeManager.Neighbours() {
-		if (neighbour.Value.Role == nodemanager.Parent) || (neighbour.Value.Role == nodemanager.Child) {
+		if (neighbour.Value.Role == nmenums.Parent) || (neighbour.Value.Role == nmenums.Child) {
 			fd.nodes.Add(neighbour.Key)
 			fd.alive.Increment(neighbour.Key, 1)
 		}

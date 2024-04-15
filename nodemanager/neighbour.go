@@ -1,16 +1,20 @@
 package nodemanager
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/vidarandrebo/oncetree/nodemanager/nmenums"
+)
 
 type Neighbour struct {
 	ID       string
 	GorumsID uint32
 	Address  string
 	Group    Group
-	Role     NodeRole
+	Role     nmenums.NodeRole
 }
 
-func NewNeighbour(ID string, gorumsID uint32, address string, role NodeRole) *Neighbour {
+func NewNeighbour(ID string, gorumsID uint32, address string, role nmenums.NodeRole) *Neighbour {
 	return &Neighbour{
 		ID:       ID,
 		GorumsID: gorumsID,

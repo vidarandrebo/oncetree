@@ -16,5 +16,5 @@ const (
 	LogFolder                = "logs"
 	NumEventHandlers         = 2
 	NumTaskHandlers          = 2
-	CloseMgrDelay            = 10 * RPCContextTimeout // Time to wait before disposing manager and its connections
+	CloseMgrDelay            = 2 * RPCContextTimeout // Time to wait before disposing manager and its connections
 )
