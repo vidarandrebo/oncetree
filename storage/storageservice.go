@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"reflect"
 
+	"github.com/vidarandrebo/oncetree/nodemanager/nmevents"
+
 	"github.com/vidarandrebo/oncetree/gorumsprovider"
 
 	"github.com/relab/gorums"
@@ -37,8 +39,8 @@ func NewStorageService(id string, logger *slog.Logger, nodeManager *nodemanager.
 		eventBus:       eventBus,
 		configProvider: configProvider,
 	}
-	eventBus.RegisterHandler(reflect.TypeOf(nodemanager.NeighbourReadyEvent{}), func(e any) {
-		if event, ok := e.(nodemanager.NeighbourReadyEvent); ok {
+	eventBus.RegisterHandler(reflect.TypeOf(nmevents.NeighbourReadyEvent{}), func(e any) {
+		if event, ok := e.(nmevents.NeighbourReadyEvent); ok {
 			ss.shareAll(event.NodeID)
 		}
 	})
@@ -52,7 +54,12 @@ func (ss *StorageService) shareAll(nodeID string) {
 		ss.logger.Error("did not find neighbour", "id", nodeID)
 		return
 	}
-	gorumsConfig := ss.configProvider.StorageConfig()
+	gorumsConfig, configExists := ss.configProvider.StorageConfig()
+	if !configExists {
+		ss.logger.Error("storageconfig does not exist",
+			slog.String("fn", "ss.shareAll"))
+		return
+	}
 	node, ok := gorumsConfig.Node(neighbour.GorumsID)
 	if !ok {
 		ss.logger.Error(
@@ -64,6 +71,7 @@ func (ss *StorageService) shareAll(nodeID string) {
 		tsRef := ss.timestamp.RLock()
 		ts := *tsRef
 		value, err := ss.storage.ReadValueExceptNode(nodeID, key)
+		// TODO - get local value
 		ss.timestamp.RUnlock(&tsRef)
 		if err != nil {
 			ss.logger.Error(
@@ -78,6 +86,7 @@ func (ss *StorageService) shareAll(nodeID string) {
 			Key:          key,
 			AggValue:     value,
 			AggTimestamp: ts,
+			// insert local value
 		}
 		_, err = node.Gossip(ctx, request)
 		if err != nil {
@@ -101,7 +110,12 @@ func (ss *StorageService) sendGossip(originID string, key int64, values map[stri
 		slog.Int64("writeID", writeID),
 	)
 	sent := false
-	gorumsConfig := ss.configProvider.StorageConfig()
+	gorumsConfig, configExists := ss.configProvider.StorageConfig()
+	if !configExists {
+		ss.logger.Error("storageconfig does not exist",
+			slog.String("fn", "ss.shareAll"))
+		return
+	}
 	for _, gorumsNode := range gorumsConfig.Nodes() {
 		nodeID, ok := ss.nodeManager.NodeID(gorumsNode.ID())
 		if !ok {
@@ -149,7 +163,7 @@ func (ss *StorageService) sendGossip(originID string, key int64, values map[stri
 }
 
 // Write RPC is used to set the local value at a given key for a single node
-func (ss *StorageService) Write(ctx gorums.ServerCtx, request *kvsprotos.WriteRequest) (response *emptypb.Empty, err error) {
+func (ss *StorageService) Write(ctx gorums.ServerCtx, request *kvsprotos.WriteRequest) (*emptypb.Empty, error) {
 	ss.logger.Debug("RPC Write", "key", request.GetKey(), "value", request.GetValue(), "writeID", request.GetWriteID())
 	ts := ss.timestamp.Lock()
 	*ts++
@@ -188,7 +202,7 @@ func (ss *StorageService) Write(ctx gorums.ServerCtx, request *kvsprotos.WriteRe
 	return &emptypb.Empty{}, nil
 }
 
-func (ss *StorageService) Read(ctx gorums.ServerCtx, request *kvsprotos.ReadRequest) (response *kvsprotos.ReadResponse, err error) {
+func (ss *StorageService) Read(ctx gorums.ServerCtx, request *kvsprotos.ReadRequest) (*kvsprotos.ReadResponse, error) {
 	value, err := ss.storage.ReadValue(request.Key)
 	if err != nil {
 		return &kvsprotos.ReadResponse{Value: 0}, err
@@ -197,7 +211,7 @@ func (ss *StorageService) Read(ctx gorums.ServerCtx, request *kvsprotos.ReadRequ
 }
 
 // ReadLocal rpc is used for checking that local values are propagated as intended
-func (ss *StorageService) ReadLocal(ctx gorums.ServerCtx, request *kvsprotos.ReadLocalRequest) (response *kvsprotos.ReadResponse, err error) {
+func (ss *StorageService) ReadLocal(ctx gorums.ServerCtx, request *kvsprotos.ReadLocalRequest) (*kvsprotos.ReadResponse, error) {
 	ss.logger.Debug("ReadLocal rpc",
 		slog.Int64("key", request.GetKey()),
 		slog.String("nodeID", request.GetNodeID()))
@@ -216,12 +230,12 @@ func (ss *StorageService) ReadAll(ctx gorums.ServerCtx, request *kvsprotos.ReadR
 	return &kvsprotos.ReadAllResponse{Value: map[string]int64{ss.id: value}}, nil
 }
 
-func (ss *StorageService) PrintState(ctx gorums.ServerCtx, request *emptypb.Empty) (response *emptypb.Empty, err error) {
+func (ss *StorageService) PrintState(ctx gorums.ServerCtx, request *emptypb.Empty) (*emptypb.Empty, error) {
 	// ss.logger.Println(ss.storage.data)
 	return &emptypb.Empty{}, nil
 }
 
-func (ss *StorageService) Gossip(ctx gorums.ServerCtx, request *kvsprotos.GossipMessage) (response *emptypb.Empty, err error) {
+func (ss *StorageService) Gossip(ctx gorums.ServerCtx, request *kvsprotos.GossipMessage) (*emptypb.Empty, error) {
 	ss.logger.Debug(
 		"RPC Gossip",
 		slog.Int64("key", request.GetKey()),

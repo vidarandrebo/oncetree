@@ -6,9 +6,9 @@ import (
 )
 
 type FDConfigProvider interface {
-	FailureDetectorConfig() *failuredetector.Configuration
+	FailureDetectorConfig() (*failuredetector.Configuration, bool)
 }
 
 type StorageConfigProvider interface {
-	StorageConfig() *kvsprotos.Configuration
+	StorageConfig() (*kvsprotos.Configuration, bool)
 }

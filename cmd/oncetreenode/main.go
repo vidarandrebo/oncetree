@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/vidarandrebo/oncetree"
 	"github.com/vidarandrebo/oncetree/consts"
@@ -52,7 +53,7 @@ func main() {
 			}
 			wg.Done()
 		}()
-		// time.Sleep(1 * time.Second)
+		time.Sleep(1 * time.Second)
 	}
 	wg.Wait()
 }

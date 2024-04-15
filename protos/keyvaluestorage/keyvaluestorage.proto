@@ -9,37 +9,37 @@ option go_package = "github.com/vidarandrebo/oncetree/keyvaluestorage";
 
 message ReadRequest {int64 Key = 1;}
 message ReadLocalRequest {
-  int64 Key = 1;
-  string NodeID = 2;
+    int64 Key = 1;
+    string NodeID = 2;
 }
 message ReadResponse {int64 Value = 1;}
 // ReadAllResponse contains a map Address -> Value
 message ReadAllResponse {map<string, int64> Value = 1;}
 
 message WriteRequest {
-  int64 Key = 1;
-  int64 Value = 2;
-  int64 WriteID = 3;
+    int64 Key = 1;
+    int64 Value = 2;
+    int64 WriteID = 3;
 }
 
 message GossipMessage {
-  string NodeID = 1;
-  int64 Key = 2;
-  int64 AggValue = 3;
-  int64 AggTimestamp = 4;
-  int64 LocalValue = 5;
-  int64 LocalTimestamp = 6;
-  int64 WriteID = 7;
+    string NodeID = 1;
+    int64 Key = 2;
+    int64 AggValue = 3;
+    int64 AggTimestamp = 4;
+    int64 LocalValue = 5;
+    int64 LocalTimestamp = 6;
+    int64 WriteID = 7;
 }
 
 service KeyValueStorage {
-  rpc Write(WriteRequest) returns (google.protobuf.Empty) {}
-  rpc Read(ReadRequest) returns (ReadResponse) {}
-  rpc ReadAll(ReadRequest) returns (ReadAllResponse) {
-    option (gorums.quorumcall) = true;
-  }
-  rpc ReadLocal(ReadLocalRequest) returns (ReadResponse) {}
-  rpc Gossip(GossipMessage) returns (google.protobuf.Empty) {}
+    rpc Write(WriteRequest) returns (google.protobuf.Empty) {}
+    rpc Read(ReadRequest) returns (ReadResponse) {}
+    rpc ReadAll(ReadRequest) returns (ReadAllResponse) {
+        option (gorums.quorumcall) = true;
+    }
+    rpc ReadLocal(ReadLocalRequest) returns (ReadResponse) {}
+    rpc Gossip(GossipMessage) returns (google.protobuf.Empty) {}
 
-  rpc PrintState(google.protobuf.Empty) returns (google.protobuf.Empty) {}
+    rpc PrintState(google.protobuf.Empty) returns (google.protobuf.Empty) {}
 }

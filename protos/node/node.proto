@@ -7,5 +7,5 @@ package node;
 option go_package = "github.com/vidarandrebo/oncetree/node";
 
 service NodeService {
-  rpc Crash(google.protobuf.Empty) returns (google.protobuf.Empty) {}
+    rpc Crash(google.protobuf.Empty) returns (google.protobuf.Empty) {}
 }

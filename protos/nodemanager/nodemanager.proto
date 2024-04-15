@@ -9,44 +9,64 @@ option go_package = "github.com/vidarandrebo/oncetree/nodemanager";
 
 
 message JoinRequest {
-  string NodeID = 1;
-  string Address = 2;
+    string NodeID = 1;
+    string Address = 2;
 }
 message JoinResponse {
-  bool OK = 1;
-  string NodeID = 2;
-  string NextAddress = 3;
+    bool OK = 1;
+    string NodeID = 2;
+    string NextAddress = 3;
 }
 
-message ReadyMessage {string NodeID = 1;}
+message ReadyMessage {
+    bool OK = 1;
+    string NodeID = 2;
+}
 
-message PrepareMessage {string NodeID = 1;}
-message PromiseMessage {string NodeID = 1;}
+message GroupMemberInfo {
+    int64 Role = 1;
+    string Address = 2;
+    string ID = 3;
+}
+
+message GroupInfoMessage {
+    int64 Epoch = 1;
+    string GroupID = 2; // GroupID is same as the ID of the node the group covers the failure of
+    repeated GroupMemberInfo Members = 3;
+}
+
+message PrepareMessage {
+    string NodeID = 1; // The sending node's ID
+    string GroupID = 2; // The failed node's ID, or groupID
+    int64 Epoch = 3; // The groups Epoch
+}
+message PromiseMessage {bool OK = 1;}
 message AcceptMessage {
-  int64 Epoch = 1;
-  int64 Key = 2;
-  int64 Value = 3;
+    string NodeID = 1;
+    string GroupID = 2; // The failed node's ID, or groupID
+    map<string, string> NewParent = 3; // map NodeID -> NewParentID
 }
 message LearnMessage {
-  int64 Epoch = 1;
-  int64 Key = 2;
+    bool OK = 1;
 }
 message CommitMessage {
-  int64 Epoch = 1;
-  int64 Key = 2;
+    string GroupID = 1;
 }
 
 
 service NodeManagerService {
-  rpc Join(JoinRequest) returns (JoinResponse){}
-  rpc Ready(ReadyMessage) returns (google.protobuf.Empty) {}
-  rpc Prepare(PrepareMessage) returns (PromiseMessage) {
-    option (gorums.quorumcall) = true;
-  }
-  rpc Accept(AcceptMessage) returns (LearnMessage) {
-    option (gorums.quorumcall) = true;
-  }
-  rpc Commit(CommitMessage) returns (google.protobuf.Empty) {
-    option (gorums.multicast) = true;
-  }
+    rpc GroupInfo(GroupInfoMessage) returns (google.protobuf.Empty) {
+        option (gorums.multicast) = true;
+    }
+    rpc Join(JoinRequest) returns (JoinResponse){}
+    rpc Ready(ReadyMessage) returns (ReadyMessage) {}
+    rpc Prepare(PrepareMessage) returns (PromiseMessage) {
+        option (gorums.quorumcall) = true;
+    }
+    rpc Accept(AcceptMessage) returns (LearnMessage) {
+        option (gorums.quorumcall) = true;
+    }
+    rpc Commit(CommitMessage) returns (google.protobuf.Empty) {
+        option (gorums.multicast) = true;
+    }
 }

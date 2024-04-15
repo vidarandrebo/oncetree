@@ -9,6 +9,10 @@ import (
 	"reflect"
 	"sync"
 
+	"github.com/vidarandrebo/oncetree/nodemanager/nmenums"
+
+	"github.com/vidarandrebo/oncetree/failuredetector/fdevents"
+
 	"github.com/relab/gorums"
 	"github.com/vidarandrebo/oncetree/gorumsprovider"
 	fdprotos "github.com/vidarandrebo/oncetree/protos/failuredetector"
@@ -51,7 +55,7 @@ func NewNode(id string, rpcAddr string, logFile io.Writer) *Node {
 	logger := slog.New(logHandler).With(slog.Group("node", slog.String("id", id)))
 	eventBus := eventbus.New(logger)
 	gorumsProvider := gorumsprovider.New(logger)
-	nodeManager := nodemanager.New(id, rpcAddr, consts.Fanout, logger, eventBus, gorumsProvider)
+	nodeManager := nodemanager.New(id, rpcAddr, logger, eventBus, gorumsProvider)
 	failureDetector := failuredetector.New(id, logger, nodeManager, eventBus, gorumsProvider)
 	storageService := storage.NewStorageService(id, logger, nodeManager, eventBus, gorumsProvider)
 
@@ -70,17 +74,17 @@ func NewNode(id string, rpcAddr string, logFile io.Writer) *Node {
 
 func (n *Node) setupEventHandlers() {
 	n.eventbus.RegisterHandler(
-		reflect.TypeOf(failuredetector.NodeFailedEvent{}),
+		reflect.TypeOf(fdevents.NodeFailedEvent{}),
 		func(e any) {
-			if event, ok := e.(failuredetector.NodeFailedEvent); ok {
+			if event, ok := e.(fdevents.NodeFailedEvent); ok {
 				n.nodeFailedHandler(event)
 			}
 		},
 	)
 }
 
-func (n *Node) nodeFailedHandler(e failuredetector.NodeFailedEvent) {
-	// n.logger.Printf("node with id %s has failed", e.NodeID)
+func (n *Node) nodeFailedHandler(e fdevents.NodeFailedEvent) {
+	// n.logger.Printf("node with id %s has failed", e.GroupID)
 }
 
 func (n *Node) startGorumsServer(addr string) {
@@ -159,11 +163,11 @@ func (n *Node) SetNeighboursFromNodeMap(nodeIDs []string, nodes map[string]strin
 	for i, nodeID := range nodeIDs {
 		// find n as a child of current node -> current node is n's parent
 		if len(nodeIDs) > (2*i+1) && nodeIDs[2*i+1] == n.id {
-			n.nodeManager.AddNeighbour(nodeID, nodes[nodeID], nodemanager.Parent)
+			n.nodeManager.AddNeighbour(nodeID, nodes[nodeID], nmenums.Parent)
 			continue
 		}
 		if len(nodeIDs) > (2*i+2) && nodeIDs[2*i+2] == n.id {
-			n.nodeManager.AddNeighbour(nodeID, nodes[nodeID], nodemanager.Parent)
+			n.nodeManager.AddNeighbour(nodeID, nodes[nodeID], nmenums.Parent)
 			continue
 		}
 
@@ -171,11 +175,11 @@ func (n *Node) SetNeighboursFromNodeMap(nodeIDs []string, nodes map[string]strin
 		if nodeID == n.id {
 			if len(nodeIDs) > (2*i + 1) {
 				childId := nodeIDs[2*i+1]
-				n.nodeManager.AddNeighbour(childId, nodes[childId], nodemanager.Child)
+				n.nodeManager.AddNeighbour(childId, nodes[childId], nmenums.Child)
 			}
 			if len(nodeIDs) > (2*i + 2) {
 				childId := nodeIDs[2*i+2]
-				n.nodeManager.AddNeighbour(childId, nodes[childId], nodemanager.Child)
+				n.nodeManager.AddNeighbour(childId, nodes[childId], nmenums.Child)
 			}
 			continue
 		}
