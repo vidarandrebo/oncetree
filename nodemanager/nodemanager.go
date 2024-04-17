@@ -225,8 +225,9 @@ func (nm *NodeManager) SendCommit() {
 	}
 	nm.neighbours.Delete(failedNode.ID)
 	nm.eventBus.PushEvent(nmevents.NewNeigbourRemovedEvent(failedNode.ID))
-	nm.gorumsProvider.Reset()
-	nm.gorumsProvider.SetNodes(nm.GorumsNeighbourMap())
+
+	newGorumsNeighbourMap := nm.GorumsNeighbourMap()
+	nm.gorumsProvider.ResetWithNewNodes(newGorumsNeighbourMap)
 
 	for _, childID := range newChildren {
 		nm.eventBus.PushEvent(nmevents.NewNeighbourAddedEvent(childID, nmenums.Child))
@@ -234,6 +235,7 @@ func (nm *NodeManager) SendCommit() {
 	nm.blackList.Add(failedNode.ID)
 	*recoveryProcessRef = nil
 	// TODO send group info update
+	nm.eventBus.PushTask(nm.SendGroupInfo)
 }
 
 func (nm *NodeManager) HandleNeighbourAddedEvent(e nmevents.NeighbourAddedEvent) {
@@ -690,10 +692,13 @@ func (nm *NodeManager) Commit(ctx gorums.ServerCtx, request *nmprotos.CommitMess
 	nm.neighbours.Delete(request.GetGroupID())
 	nm.blackList.Add(request.GetGroupID())
 	nm.eventBus.PushEvent(nmevents.NewNeigbourRemovedEvent(request.GetGroupID()))
-	nm.gorumsProvider.Reset()
-	nm.gorumsProvider.SetNodes(nm.GorumsNeighbourMap())
+
+	newGorumsNeighbourMap := nm.GorumsNeighbourMap()
+	nm.gorumsProvider.ResetWithNewNodes(newGorumsNeighbourMap)
+
 	nm.eventBus.PushEvent(nmevents.NewNeighbourAddedEvent(newParentID, nmenums.Parent))
 	*recoveryProcessRef = nil
+	nm.eventBus.PushTask(nm.SendGroupInfo)
 	// TODO send group info update
 }
 

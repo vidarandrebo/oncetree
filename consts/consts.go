@@ -17,4 +17,5 @@ const (
 	NumEventHandlers         = 2
 	NumTaskHandlers          = 2
 	CloseMgrDelay            = 2 * RPCContextTimeout // Time to wait before disposing manager and its connections
+	EventBusQueueLength      = 256
 )
