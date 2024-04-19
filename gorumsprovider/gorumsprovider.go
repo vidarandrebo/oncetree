@@ -28,12 +28,16 @@ func New(logger *slog.Logger) *GorumsProvider {
 
 // SetNodes updates all configurations to contain the input nodes
 func (gp *GorumsProvider) SetNodes(nodes map[string]uint32) {
+	gp.mut.Lock()
+	defer gp.mut.Unlock()
+	gp.setNodes(nodes)
+}
+
+func (gp *GorumsProvider) setNodes(nodes map[string]uint32) {
 	if len(nodes) == 0 {
 		gp.logger.Warn("no nodes in node-map, skipping config creation")
 		return
 	}
-	gp.mut.Lock()
-	defer gp.mut.Unlock()
 	var err error
 
 	// NodeManager
@@ -69,6 +73,26 @@ func (gp *GorumsProvider) SetNodes(nodes map[string]uint32) {
 	}
 }
 
+// Reset deletes existing manager and configs, then it creates new ones
+func (gp *GorumsProvider) Reset() {
+	gp.mut.Lock()
+	defer gp.mut.Unlock()
+	gp.reset()
+}
+
+func (gp *GorumsProvider) reset() {
+	gp.managers = gp.managers.recreate(gp.logger)
+	gp.configurations = newConfigurations()
+}
+
+// ResetWithNewNodes deletes existing manager and configs, then it creates new ones with the provided nodes
+func (gp *GorumsProvider) ResetWithNewNodes(nodes map[string]uint32) {
+	gp.mut.Lock()
+	defer gp.mut.Unlock()
+	gp.reset()
+	gp.setNodes(nodes)
+}
+
 func (gp *GorumsProvider) FailureDetectorConfig() (*fdprotos.Configuration, bool) {
 	gp.mut.RLock()
 	defer gp.mut.RUnlock()
@@ -88,6 +112,8 @@ func (gp *GorumsProvider) NodeManagerConfig() (*nmprotos.Configuration, bool) {
 }
 
 func (gp *GorumsProvider) CustomNodeManagerConfig(gorumsMap map[string]uint32) (*nmprotos.Configuration, error) {
+	gp.mut.RLock()
+	defer gp.mut.RUnlock()
 	cfg, err := gp.managers.newNodeManagerConfig(gorumsMap)
 	return cfg, err
 }
@@ -108,12 +134,4 @@ func (gp *GorumsProvider) StorageConfig() (*kvsprotos.Configuration, bool) {
 		return nil, false
 	}
 	return gp.configurations.kvsConfig, true
-}
-
-// Reset deletes existing manager and configs, then it creates new ones
-func (gp *GorumsProvider) Reset() {
-	gp.mut.Lock()
-	defer gp.mut.Unlock()
-	gp.managers = gp.managers.recreate(gp.logger)
-	gp.configurations = newConfigurations()
 }

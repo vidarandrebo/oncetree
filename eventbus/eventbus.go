@@ -22,9 +22,9 @@ type EventBus struct {
 
 func New(logger *slog.Logger) *EventBus {
 	return &EventBus{
-		pendingTasks:    make(chan func(), 64),
+		pendingTasks:    make(chan func(), consts.EventBusQueueLength),
 		taskChanClosed:  false,
-		pendingEvents:   make(chan any, 256),
+		pendingEvents:   make(chan any, consts.EventBusQueueLength),
 		eventChanClosed: false,
 		handlers:        make(map[reflect.Type][]func(any)),
 		logger:          logger.With(slog.Group("node", slog.String("module", "eventbus"))),

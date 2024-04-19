@@ -1,17 +1,25 @@
 package nodemanager
 
+import "sync"
+
 type RecoveryProcess struct {
-	GroupID   string
-	LeaderID  string
-	IsLeader  bool
-	NewParent string
+	isActive  bool
+	isLeader  bool
+	mut       sync.RWMutex
+	groupID   string
+	leaderID  string
+	newParent string
 }
 
-func NewRecoveryProcess(groupID string, isLeader bool) *RecoveryProcess {
-	return &RecoveryProcess{
-		GroupID:   groupID,
-		LeaderID:  "",
-		IsLeader:  isLeader,
-		NewParent: "",
-	}
+func (rp *RecoveryProcess) start(groupID string) {
+	rp.isActive = true
+	rp.groupID = groupID
+}
+
+func (rp *RecoveryProcess) stop() {
+	rp.isActive = false
+	rp.isLeader = false
+	rp.groupID = ""
+	rp.leaderID = ""
+	rp.newParent = ""
 }
