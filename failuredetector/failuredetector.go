@@ -66,8 +66,8 @@ func (fd *FailureDetector) SetNodesFromManager() {
 	fd.alive.Clear()
 	for _, neighbour := range fd.nodeManager.Neighbours() {
 		if (neighbour.Value.Role == nmenums.Parent) || (neighbour.Value.Role == nmenums.Child) {
-			fd.nodes.Add(neighbour.Key)
 			fd.alive.Increment(neighbour.Key, 1)
+			fd.nodes.Add(neighbour.Key)
 		}
 	}
 }
