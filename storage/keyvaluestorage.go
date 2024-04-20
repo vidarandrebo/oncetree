@@ -157,3 +157,7 @@ func (kvs *KeyValueStorage) Keys() hashset.HashSet[int64] {
 	}
 	return keys
 }
+
+func (kvs *KeyValueStorage) MergeLocalIntoSelf(remoteID string, selfID string, key int64) {
+
+}

@@ -44,7 +44,31 @@ func NewStorageService(id string, logger *slog.Logger, nodeManager *nodemanager.
 			ss.shareAll(event.NodeID)
 		}
 	})
+	eventBus.RegisterHandler(reflect.TypeOf(nmevents.TreeRecoveredEvent{}), func(e any) {
+		if event, ok := e.(nmevents.TreeRecoveredEvent); ok {
+			logger.Info(event.FailedNodeID)
+			ss.MergeKeys(event)
+		}
+	})
 	return ss
+}
+
+func (ss *StorageService) MergeKeys(event nmevents.TreeRecoveredEvent) {
+	//keySet := ss.storage.Keys()
+	_, ok := ss.configProvider.StorageConfig()
+	if !ok {
+		ss.logger.Error("failed to get storage-config")
+	}
+	//	for _, key := range keySet.Values() {
+	//		storedValue, ok := ss.storage.ReadLocalValue(key, event.FailedNodeID)
+	//		ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
+	//		response, err := cfg.Prepare(ctx, &kvsprotos.PrepareMessage{
+	//			Key:          key,
+	//			Ts:           storedValue.Timestamp,
+	//			FailedNodeID: event.FailedNodeID,
+	//		})
+	//		cancel()
+	//	}
 }
 
 func (ss *StorageService) shareAll(nodeID string) {
@@ -99,6 +123,18 @@ func (ss *StorageService) shareAll(nodeID string) {
 	ss.logger.Info(
 		"completed sharing values",
 		slog.String("id", nodeID))
+}
+
+// hasValueToGossip determines if any of the values stored will have to be gossiped
+//
+// This fn is needed to make the Gossip fn converge when the task-queue is bounded
+func (ss *StorageService) hasValueToGossip(origin string, valuesToGossip map[string]int64) bool {
+	for key := range valuesToGossip {
+		if (key != ss.id) && (key != origin) {
+			return true
+		}
+	}
+	return false
 }
 
 func (ss *StorageService) sendGossip(originID string, key int64, values map[string]int64, ts int64, localValue TimestampedValue, writeID int64) {
@@ -285,14 +321,35 @@ func (ss *StorageService) Gossip(ctx gorums.ServerCtx, request *kvsprotos.Gossip
 	return &emptypb.Empty{}, nil
 }
 
-// hasValueToGossip determines if any of the values stored will have to be gossiped
-//
-// This fn is needed to make the Gossip fn converge when the task-queue is bounded
-func (ss *StorageService) hasValueToGossip(origin string, valuesToGossip map[string]int64) bool {
-	for key := range valuesToGossip {
-		if (key != ss.id) && (key != origin) {
-			return true
-		}
+func (ss *StorageService) Prepare(ctx gorums.ServerCtx, request *kvsprotos.PrepareMessage) (*kvsprotos.PromiseMessage, error) {
+	ss.logger.Info("Prepare RPC",
+		slog.String("failedNodeID", request.GetFailedNodeID()))
+	value, ok := ss.storage.ReadLocalValue(request.GetKey(), request.GetFailedNodeID())
+	if !ok {
+		// no local value stored
+		return &kvsprotos.PromiseMessage{
+			OK:    true,
+			Value: 0,
+			Ts:    0,
+		}, nil
 	}
-	return false
+	if value.Timestamp <= request.GetTs() {
+		// older or same value stored
+		return &kvsprotos.PromiseMessage{
+			OK:    true,
+			Value: 0,
+			Ts:    0,
+		}, nil
+	}
+	// newer value stored
+	return &kvsprotos.PromiseMessage{
+		OK:    false,
+		Value: value.Value,
+		Ts:    value.Timestamp,
+	}, nil
+}
+
+func (ss *StorageService) Accept(ctx gorums.ServerCtx, request *kvsprotos.AcceptMessage) (*kvsprotos.LearnMessage, error) {
+	//TODO implement me
+	panic("implement me")
 }

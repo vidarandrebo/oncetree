@@ -7,11 +7,10 @@
 package node
 
 import (
-	reflect "reflect"
-
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
+	reflect "reflect"
 )
 
 const (
@@ -41,7 +40,6 @@ var file_protos_node_node_proto_rawDesc = []byte{
 var file_protos_node_node_proto_goTypes = []interface{}{
 	(*emptypb.Empty)(nil), // 0: google.protobuf.Empty
 }
-
 var file_protos_node_node_proto_depIdxs = []int32{
 	0, // 0: node.NodeService.Crash:input_type -> google.protobuf.Empty
 	0, // 1: node.NodeService.Crash:output_type -> google.protobuf.Empty
