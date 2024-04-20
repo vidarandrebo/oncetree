@@ -54,21 +54,44 @@ func NewStorageService(id string, logger *slog.Logger, nodeManager *nodemanager.
 }
 
 func (ss *StorageService) MergeKeys(event nmevents.TreeRecoveredEvent) {
-	//keySet := ss.storage.Keys()
-	_, ok := ss.configProvider.StorageConfig()
+	keySet := ss.storage.Keys()
+	cfg, ok := ss.configProvider.StorageConfig()
 	if !ok {
 		ss.logger.Error("failed to get storage-config")
 	}
-	//	for _, key := range keySet.Values() {
-	//		storedValue, ok := ss.storage.ReadLocalValue(key, event.FailedNodeID)
-	//		ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
-	//		response, err := cfg.Prepare(ctx, &kvsprotos.PrepareMessage{
-	//			Key:          key,
-	//			Ts:           storedValue.Timestamp,
-	//			FailedNodeID: event.FailedNodeID,
-	//		})
-	//		cancel()
-	//	}
+	for _, key := range keySet.Values() {
+		storedValue, ok := ss.storage.ReadLocalValue(key, event.FailedNodeID)
+		if !ok {
+			ss.logger.Info("storage does not contain value")
+			continue
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
+		response, err := cfg.Prepare(ctx, &kvsprotos.PrepareMessage{
+			Key:          key,
+			Ts:           storedValue.Timestamp,
+			FailedNodeID: event.FailedNodeID,
+		})
+		cancel()
+		if err != nil {
+			panic("failed to get response")
+		}
+		if response.GetOK() {
+			ss.logger.Info("node has latest ts",
+				slog.Int64("key", key),
+				slog.Int64("ts", storedValue.Timestamp))
+		} else {
+			// this case is extremely unlikely as the failing node will have had to transmit an update to only a
+			// subset of its neighbours while failing
+			ss.logger.Warn("remote has latest ts",
+				slog.Int64("key", key),
+				slog.Int64("ts", response.GetTs()))
+			ss.storage.WriteLocalValue(event.FailedNodeID, key, response.GetValue(), response.GetTs())
+		}
+		// TODO - there is a case where a failed node has partially propagated a new key.
+		// there should be a way to ensure that the values of all keys are transferred into leaders ownership,
+		// not just the keys the leader knows of.
+	}
+	
 }
 
 func (ss *StorageService) shareAll(nodeID string) {

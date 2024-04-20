@@ -213,7 +213,7 @@ func (nm *NodeManager) SendCommit() {
 	ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
 	defer cancel()
 	cfg.Commit(ctx, &nmprotos.CommitMessage{GroupID: nm.recoveryProcess.groupID})
-	failedNode, ok := nm.neighbours.Get((nm.recoveryProcess.groupID))
+	failedNode, ok := nm.neighbours.Get(nm.recoveryProcess.groupID)
 	if !ok {
 		panic("could not find failed node in neighbour map")
 	}
@@ -243,6 +243,7 @@ func (nm *NodeManager) SendCommit() {
 	nm.blackList.Add(failedNode.ID)
 	nm.recoveryProcess.stop()
 	nm.eventBus.PushTask(nm.SendGroupInfo)
+	nm.eventBus.PushEvent(nmevents.NewTreeRecoveredEvent(failedNode.ID))
 }
 
 func (nm *NodeManager) HandleNeighbourAddedEvent(e nmevents.NeighbourAddedEvent) {
