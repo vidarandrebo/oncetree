@@ -35,7 +35,8 @@ message GossipMessage {
 message PrepareMessage {
     int64 Key = 1;
     int64 Ts = 2;
-    string FailedNodeID = 3;
+    string NodeID = 3;
+    string FailedNodeID = 4;
 }
 message PromiseMessage {
     bool OK = 1;
@@ -47,6 +48,8 @@ message AcceptMessage {
     int64 AggValue = 2;
     int64 LocalValue = 3;
     int64 Timestamp = 4; // Local ts should be same as agg timestamp here
+    string NodeID = 5;
+    string Target = 6;
 }
 message LearnMessage {
     bool OK = 1;
@@ -67,5 +70,6 @@ service KeyValueStorage {
     }
     rpc Accept(AcceptMessage) returns (LearnMessage) {
         option (gorums.quorumcall) = true;
+        option (gorums.per_node_arg) = true;
     }
 }

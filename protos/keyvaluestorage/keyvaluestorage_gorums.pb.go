@@ -220,9 +220,12 @@ func (c *Configuration) Prepare(ctx context.Context, in *PrepareMessage) (resp *
 	return res.(*PromiseMessage), err
 }
 
-// Accept is a quorum call invoked on all nodes in configuration c,
-// with the same argument in, and returns a combined result.
-func (c *Configuration) Accept(ctx context.Context, in *AcceptMessage) (resp *LearnMessage, err error) {
+// Accept is a quorum call invoked on each node in configuration c,
+// with the argument returned by the provided function f, and returns the combined result.
+// The per node function f receives a copy of the AcceptMessage request argument and
+// returns a AcceptMessage manipulated to be passed to the given nodeID.
+// The function f must be thread-safe.
+func (c *Configuration) Accept(ctx context.Context, in *AcceptMessage, f func(*AcceptMessage, uint32) *AcceptMessage) (resp *LearnMessage, err error) {
 	cd := gorums.QuorumCallData{
 		Message: in,
 		Method:  "keyvaluestorage.KeyValueStorage.Accept",
@@ -233,6 +236,9 @@ func (c *Configuration) Accept(ctx context.Context, in *AcceptMessage) (resp *Le
 			r[k] = v.(*LearnMessage)
 		}
 		return c.qspec.AcceptQF(req.(*AcceptMessage), r)
+	}
+	cd.PerNodeArgFn = func(req protoreflect.ProtoMessage, nid uint32) protoreflect.ProtoMessage {
+		return f(req.(*AcceptMessage), nid)
 	}
 
 	res, err := c.RawConfiguration.QuorumCall(ctx, cd)

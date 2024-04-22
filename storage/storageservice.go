@@ -11,6 +11,7 @@ import (
 	"github.com/vidarandrebo/oncetree/gorumsprovider"
 
 	"github.com/relab/gorums"
+	"github.com/vidarandrebo/oncetree/concurrent/maps"
 	"github.com/vidarandrebo/oncetree/concurrent/mutex"
 	"github.com/vidarandrebo/oncetree/consts"
 	"github.com/vidarandrebo/oncetree/eventbus"
@@ -47,13 +48,13 @@ func NewStorageService(id string, logger *slog.Logger, nodeManager *nodemanager.
 	eventBus.RegisterHandler(reflect.TypeOf(nmevents.TreeRecoveredEvent{}), func(e any) {
 		if event, ok := e.(nmevents.TreeRecoveredEvent); ok {
 			logger.Info(event.FailedNodeID)
-			ss.MergeKeys(event)
+			ss.SendPrepare(event)
 		}
 	})
 	return ss
 }
 
-func (ss *StorageService) MergeKeys(event nmevents.TreeRecoveredEvent) {
+func (ss *StorageService) SendPrepare(event nmevents.TreeRecoveredEvent) {
 	keySet := ss.storage.Keys()
 	cfg, ok := ss.configProvider.StorageConfig()
 	if !ok {
@@ -62,11 +63,13 @@ func (ss *StorageService) MergeKeys(event nmevents.TreeRecoveredEvent) {
 	for _, key := range keySet.Values() {
 		storedValue, ok := ss.storage.ReadLocalValue(key, event.FailedNodeID)
 		if !ok {
-			ss.logger.Info("storage does not contain value")
+			ss.logger.Info("storage does not contain value",
+				slog.Int64("key", key))
 			continue
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
 		response, err := cfg.Prepare(ctx, &kvsprotos.PrepareMessage{
+			NodeID:       ss.id,
 			Key:          key,
 			Ts:           storedValue.Timestamp,
 			FailedNodeID: event.FailedNodeID,
@@ -85,13 +88,95 @@ func (ss *StorageService) MergeKeys(event nmevents.TreeRecoveredEvent) {
 			ss.logger.Warn("remote has latest ts",
 				slog.Int64("key", key),
 				slog.Int64("ts", response.GetTs()))
-			ss.storage.WriteLocalValue(event.FailedNodeID, key, response.GetValue(), response.GetTs())
+			ss.storage.WriteLocalValue(key, response.GetValue(), response.GetTs(), event.FailedNodeID)
 		}
 		// TODO - there is a case where a failed node has partially propagated a new key.
 		// there should be a way to ensure that the values of all keys are transferred into leaders ownership,
 		// not just the keys the leader knows of.
 	}
-	
+	ss.SendAccept(event.FailedNodeID)
+}
+
+func (ss *StorageService) SendAccept(failedNodeID string) {
+	ss.logger.Info("sending Accept messages",
+		slog.String("fn", "ss.SendAccept"))
+	keySet := ss.storage.Keys()
+	cfg, ok := ss.configProvider.StorageConfig()
+	if !ok {
+		ss.logger.Error("failed to get storage-config")
+	}
+	for _, key := range keySet.Values() {
+		ts := ss.timestamp.Lock()
+		*ts++
+		writeTs := *ts
+		localValue, readValueErr := ss.storage.ReadValueFromNode(key, ss.id)
+		if readValueErr != nil {
+			ss.logger.Info("node does not contain value",
+				slog.Int64("key", key),
+				slog.Any("err", readValueErr))
+			localValue = TimestampedValue{Value: 0, Timestamp: 0}
+		}
+		oldLocal, ok := ss.storage.ReadLocalValue(key, failedNodeID)
+		if !ok {
+			ss.logger.Info("failed node does not store value for key",
+				slog.String("id", failedNodeID),
+				slog.Int64("key", key))
+			ss.timestamp.Unlock(&ts)
+			continue
+		}
+		newLocalValue := oldLocal.Value + localValue.Value
+
+		ok = ss.storage.WriteValue(key, newLocalValue, writeTs, ss.id)
+		if !ok {
+			ss.logger.Error("failed to write local new value",
+				slog.Int64("value", newLocalValue),
+				slog.Int64("key", key))
+		}
+		ss.storage.DeleteAgg(key, failedNodeID)
+		ss.storage.DeleteLocal(key, ss.id)
+
+		// does not user storage.ReadLocalValue, since the aggregated value IS the local value in this case, and self's local value cannot be found using ReadLocalValue
+		// both the write and read must happen while ts mutex is locked to avoid inconsistencies
+		valuesToGossip, gossipValueErr := ss.storage.GossipValues(
+			key,
+			ss.nodeManager.NeighbourIDs(),
+		)
+		ss.timestamp.Unlock(&ts)
+
+		if gossipValueErr != nil {
+			ss.logger.Error("failed to get valus to gossip")
+		}
+
+		valuesToGossipSafe := maps.FromMap(valuesToGossip)
+		ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
+		defer cancel()
+		response, err := cfg.Accept(ctx, &kvsprotos.AcceptMessage{
+			NodeID:     ss.id,
+			Key:        key,
+			AggValue:   -1,
+			LocalValue: newLocalValue,
+			Target:     "",
+			Timestamp:  writeTs,
+		}, func(request *kvsprotos.AcceptMessage, gorumsID uint32) *kvsprotos.AcceptMessage {
+			id, ok := ss.nodeManager.NodeID(gorumsID)
+			if !ok {
+				return request
+			}
+			aggValue, ok := valuesToGossipSafe.Get(id)
+			if !ok {
+				return request
+			}
+			request.AggValue = aggValue
+			request.Target = id
+			return request
+		})
+		if err != nil {
+			ss.logger.Error("sending accept failed",
+				slog.Any("err", err))
+		}
+		ss.logger.Info("got response from accept",
+			slog.Bool("ok", response.GetOK()))
+	}
 }
 
 func (ss *StorageService) shareAll(nodeID string) {
@@ -117,7 +202,7 @@ func (ss *StorageService) shareAll(nodeID string) {
 	for _, key := range ss.storage.Keys().Values() {
 		tsRef := ss.timestamp.RLock()
 		ts := *tsRef
-		value, err := ss.storage.ReadValueExceptNode(nodeID, key)
+		value, err := ss.storage.ReadValueExceptNode(key, nodeID)
 		// TODO - get local value
 		ss.timestamp.RUnlock(&tsRef)
 		if err != nil {
@@ -227,10 +312,10 @@ func (ss *StorageService) Write(ctx gorums.ServerCtx, request *kvsprotos.WriteRe
 	ts := ss.timestamp.Lock()
 	*ts++
 	writeTs := *ts
-	ok := ss.storage.WriteValue(ss.id, request.GetKey(), request.GetValue(), writeTs)
+	ok := ss.storage.WriteValue(request.GetKey(), request.GetValue(), writeTs, ss.id)
 
 	// does not user storage.ReadLocalValue, since the aggregated value IS the local value in this case, and self's local value cannot be found using ReadLocalValue
-	localValue, readValueErr := ss.storage.ReadValueFromNode(ss.id, request.GetKey())
+	localValue, readValueErr := ss.storage.ReadValueFromNode(request.GetKey(), ss.id)
 	valuesToGossip, gossipValueErr := ss.storage.GossipValues(
 		request.GetKey(),
 		ss.nodeManager.NeighbourIDs(),
@@ -251,7 +336,7 @@ func (ss *StorageService) Write(ctx gorums.ServerCtx, request *kvsprotos.WriteRe
 
 	if ok && ss.hasValueToGossip(ss.id, valuesToGossip) {
 		// only start gossip if write was successful
-		ss.sendGossip(ss.id, request.GetKey(), valuesToGossip, writeTs, TimestampedValue{Value: localValue, Timestamp: writeTs}, request.GetWriteID())
+		ss.sendGossip(ss.id, request.GetKey(), valuesToGossip, writeTs, TimestampedValue{Value: localValue.Value, Timestamp: writeTs}, request.GetWriteID())
 	} else {
 		ss.logger.Warn(
 			"write failed because existing value has higher timestamp",
@@ -307,8 +392,8 @@ func (ss *StorageService) Gossip(ctx gorums.ServerCtx, request *kvsprotos.Gossip
 	ts := ss.timestamp.Lock()
 	*ts++
 	writeTs := *ts
-	updated := ss.storage.WriteValue(request.GetNodeID(), request.GetKey(), request.GetAggValue(), request.GetAggTimestamp())
-	wroteLocal := ss.storage.WriteLocalValue(request.GetNodeID(), request.GetKey(), request.GetLocalValue(), request.GetLocalTimestamp())
+	updated := ss.storage.WriteValue(request.GetKey(), request.GetAggValue(), request.GetAggTimestamp(), request.GetNodeID())
+	wroteLocal := ss.storage.WriteLocalValue(request.GetKey(), request.GetLocalValue(), request.GetLocalTimestamp(), request.GetNodeID())
 	if wroteLocal {
 		ss.logger.Debug("wrote local value",
 			slog.Int64("key", request.GetKey()),
@@ -346,6 +431,7 @@ func (ss *StorageService) Gossip(ctx gorums.ServerCtx, request *kvsprotos.Gossip
 
 func (ss *StorageService) Prepare(ctx gorums.ServerCtx, request *kvsprotos.PrepareMessage) (*kvsprotos.PromiseMessage, error) {
 	ss.logger.Info("Prepare RPC",
+		slog.Int64("key", request.GetKey()),
 		slog.String("failedNodeID", request.GetFailedNodeID()))
 	value, ok := ss.storage.ReadLocalValue(request.GetKey(), request.GetFailedNodeID())
 	if !ok {
@@ -373,6 +459,11 @@ func (ss *StorageService) Prepare(ctx gorums.ServerCtx, request *kvsprotos.Prepa
 }
 
 func (ss *StorageService) Accept(ctx gorums.ServerCtx, request *kvsprotos.AcceptMessage) (*kvsprotos.LearnMessage, error) {
-	//TODO implement me
-	panic("implement me")
+	ss.logger.Info("Accept RPC",
+		slog.String("target", request.GetTarget()),
+		slog.String("id", request.GetNodeID()),
+		slog.Int64("key", request.GetKey()),
+		slog.Int64("localValue", request.GetLocalValue()),
+		slog.Int64("aggValue", request.GetAggValue()))
+	return &kvsprotos.LearnMessage{OK: true}, nil
 }

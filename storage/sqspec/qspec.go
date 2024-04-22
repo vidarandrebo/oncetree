@@ -43,5 +43,15 @@ func (q *QSpec) PrepareQF(in *kvsprotos.PrepareMessage, replies map[uint32]*kvsp
 }
 
 func (q *QSpec) AcceptQF(in *kvsprotos.AcceptMessage, replies map[uint32]*kvsprotos.LearnMessage) (*kvsprotos.LearnMessage, bool) {
-	return nil, false
+	if len(replies) != q.NumNodes {
+		return nil, false
+	}
+	learn := kvsprotos.LearnMessage{OK: true}
+	for _, reply := range replies {
+		if !reply.OK {
+			learn.OK = false
+			return &learn, true
+		}
+	}
+	return &learn, true
 }

@@ -3,8 +3,9 @@ package oncetree
 import (
 	"context"
 	"fmt"
-	kvsprotos "github.com/vidarandrebo/oncetree/protos/keyvaluestorage"
 	"log/slog"
+
+	kvsprotos "github.com/vidarandrebo/oncetree/protos/keyvaluestorage"
 
 	"github.com/vidarandrebo/oncetree/gorumsprovider"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -29,11 +30,12 @@ func (c *Client) Run() {
 	if !ok {
 		return
 	}
-	storageNode, exists := storageCfg.Node(1)
-	if !exists {
-		panic("node does not exists")
-	}
 	for i := 0; i < 10000; i++ {
+		storageNode, exists := storageCfg.Node(uint32(i % 15))
+		if !exists {
+			fmt.Println(i)
+			panic("node does not exists")
+		}
 		response, err := storageNode.Write(context.Background(), &kvsprotos.WriteRequest{
 			Key:     int64((i % 100) + 1),
 			Value:   int64(i + 2),
