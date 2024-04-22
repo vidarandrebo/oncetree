@@ -35,21 +35,21 @@ var keyValueStorage = KeyValueStorage{
 }
 
 func TestKeyValueStorage_ReadValueFromNode(t *testing.T) {
-	value, err := keyValueStorage.ReadValueFromNode("ID1", 1)
+	value, err := keyValueStorage.ReadValueFromNode(1, "ID1")
 	assert.Nil(t, err)
-	assert.Equal(t, int64(12), value)
+	assert.Equal(t, int64(12), value.Value)
 }
 
 func TestKeyValueStorage_ReadValueFromNode_NoAddr(t *testing.T) {
-	value, err := keyValueStorage.ReadValueFromNode("ID99", 1)
-	assert.Equal(t, int64(0), value)
+	value, err := keyValueStorage.ReadValueFromNode(1, "ID99")
 	assert.NotNil(t, err)
+	assert.Equal(t, int64(0), value.Value)
 }
 
 func TestKeyValueStorage_ReadValueFromNode_NoKey(t *testing.T) {
-	value, err := keyValueStorage.ReadValueFromNode("ID1", 99)
-	assert.Equal(t, int64(0), value)
+	value, err := keyValueStorage.ReadValueFromNode(99, "ID1")
 	assert.NotNil(t, err)
+	assert.Equal(t, int64(0), value.Value)
 }
 
 func TestKeyValueStorage_ReadValue(t *testing.T) {
@@ -69,23 +69,23 @@ func TestKeyValueStorage_ReadValue_NoKey(t *testing.T) {
 }
 
 func TestKeyValueStorage_ReadValueExceptNode(t *testing.T) {
-	value, err := keyValueStorage.ReadValueExceptNode("ID1", 4)
+	value, err := keyValueStorage.ReadValueExceptNode(4, "ID1")
 	assert.Nil(t, err)
 	assert.Equal(t, int64(55), value)
 
-	value, err = keyValueStorage.ReadValueExceptNode("ID4", 1)
+	value, err = keyValueStorage.ReadValueExceptNode(1, "ID4")
 	assert.Nil(t, err)
 	assert.Equal(t, int64(71), value)
 }
 
 func TestKeyValueStorage_ReadValueExceptNode_NoKey(t *testing.T) {
-	value, err := keyValueStorage.ReadValueExceptNode("ID1", 99)
+	value, err := keyValueStorage.ReadValueExceptNode(99, "ID1")
 	assert.NotNil(t, err)
 	assert.Equal(t, int64(0), value)
 }
 
 func TestKeyValueStorage_ReadValueExceptNode_FoundZero(t *testing.T) {
-	value, err := keyValueStorage.ReadValueExceptNode("ID1", 5)
+	value, err := keyValueStorage.ReadValueExceptNode(5, "ID1")
 	assert.Nil(t, err)
 	assert.Equal(t, int64(0), value)
 }
@@ -94,8 +94,9 @@ func TestKeyValueStorage_WriteValue_NoAddr(t *testing.T) {
 	testID := "ID55"
 	testKey := int64(1)
 	testValue := int64(10)
-	valueChanged := keyValueStorage.WriteValue(testID, testKey, testValue, 4)
-	assert.Equal(t, keyValueStorage.data[testID][testKey], TimestampedValue{Value: testValue, Timestamp: 4})
+	testTs := int64(4)
+	valueChanged := keyValueStorage.WriteValue(testKey, testValue, testTs, testID)
+	assert.Equal(t, TimestampedValue{Value: testValue, Timestamp: 4}, keyValueStorage.data[testID][testKey])
 	assert.True(t, valueChanged)
 }
 
@@ -103,8 +104,9 @@ func TestKeyValueStorage_WriteValue_OverWrite(t *testing.T) {
 	testID := "ID1"
 	testKey := int64(2)
 	testValue := int64(15)
-	valueChanged := keyValueStorage.WriteValue(testID, testKey, testValue, 4)
-	assert.Equal(t, keyValueStorage.data[testID][testKey], TimestampedValue{Value: testValue, Timestamp: 4})
+	testTs := int64(4)
+	valueChanged := keyValueStorage.WriteValue(testKey, testValue, testTs, testID)
+	assert.Equal(t, TimestampedValue{Value: testValue, Timestamp: 4}, keyValueStorage.data[testID][testKey])
 	assert.True(t, valueChanged)
 }
 
@@ -114,7 +116,7 @@ func TestKeyValueStorage_WriteValue_NoChange(t *testing.T) {
 	testKey := int64(2)
 	testValue := int64(99)
 	testTs := int64(2)
-	valueChanged := keyValueStorage.WriteValue(testID, testKey, testValue, testTs)
+	valueChanged := keyValueStorage.WriteValue(testKey, testValue, testTs, testID)
 	assert.Equal(t, keyValueStorage.data[testID][testKey], TimestampedValue{Value: 16, Timestamp: 3})
 	assert.False(t, valueChanged)
 }

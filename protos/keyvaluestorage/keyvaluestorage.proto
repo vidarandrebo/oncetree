@@ -32,6 +32,30 @@ message GossipMessage {
     int64 WriteID = 7;
 }
 
+message PrepareMessage {
+    int64 Key = 1;
+    int64 Ts = 2;
+    string NodeID = 3;
+    string FailedNodeID = 4;
+}
+message PromiseMessage {
+    bool OK = 1;
+    int64 Value = 2;
+    int64 Ts = 3;
+}
+message AcceptMessage {
+    int64 Key = 1;
+    int64 AggValue = 2;
+    int64 LocalValue = 3;
+    int64 Timestamp = 4; // Local ts should be same as agg timestamp here
+    string NodeID = 5;
+    string FailedNodeID = 6;
+}
+message LearnMessage {
+    bool OK = 1;
+}
+
+
 service KeyValueStorage {
     rpc Write(WriteRequest) returns (google.protobuf.Empty) {}
     rpc Read(ReadRequest) returns (ReadResponse) {}
@@ -40,6 +64,12 @@ service KeyValueStorage {
     }
     rpc ReadLocal(ReadLocalRequest) returns (ReadResponse) {}
     rpc Gossip(GossipMessage) returns (google.protobuf.Empty) {}
-
     rpc PrintState(google.protobuf.Empty) returns (google.protobuf.Empty) {}
+    rpc Prepare(PrepareMessage) returns (PromiseMessage) {
+        option (gorums.quorumcall) = true;
+    }
+    rpc Accept(AcceptMessage) returns (LearnMessage) {
+        option (gorums.quorumcall) = true;
+        option (gorums.per_node_arg) = true;
+    }
 }

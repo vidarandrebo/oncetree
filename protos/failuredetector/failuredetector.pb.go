@@ -28,7 +28,7 @@ type HeartbeatMessage struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	NodeID string `protobuf:"bytes,1,opt,name=GroupID,proto3" json:"GroupID,omitempty"`
+	NodeID string `protobuf:"bytes,1,opt,name=NodeID,proto3" json:"NodeID,omitempty"`
 }
 
 func (x *HeartbeatMessage) Reset() {

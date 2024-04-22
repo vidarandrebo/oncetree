@@ -9,7 +9,6 @@ package keyvaluestorage
 import (
 	context "context"
 	fmt "fmt"
-
 	gorums "github.com/relab/gorums"
 	encoding "google.golang.org/grpc/encoding"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -161,6 +160,20 @@ type QuorumSpec interface {
 	// be used by the quorum function. If the in parameter is not needed
 	// you should implement your quorum function with '_ *ReadRequest'.
 	ReadAllQF(in *ReadRequest, replies map[uint32]*ReadAllResponse) (*ReadAllResponse, bool)
+
+	// PrepareQF is the quorum function for the Prepare
+	// quorum call method. The in parameter is the request object
+	// supplied to the Prepare method at call time, and may or may not
+	// be used by the quorum function. If the in parameter is not needed
+	// you should implement your quorum function with '_ *PrepareMessage'.
+	PrepareQF(in *PrepareMessage, replies map[uint32]*PromiseMessage) (*PromiseMessage, bool)
+
+	// AcceptQF is the quorum function for the Accept
+	// quorum call method. The in parameter is the request object
+	// supplied to the Accept method at call time, and may or may not
+	// be used by the quorum function. If the in parameter is not needed
+	// you should implement your quorum function with '_ *AcceptMessage'.
+	AcceptQF(in *AcceptMessage, replies map[uint32]*LearnMessage) (*LearnMessage, bool)
 }
 
 // ReadAll is a quorum call invoked on all nodes in configuration c,
@@ -183,6 +196,56 @@ func (c *Configuration) ReadAll(ctx context.Context, in *ReadRequest) (resp *Rea
 		return nil, err
 	}
 	return res.(*ReadAllResponse), err
+}
+
+// Prepare is a quorum call invoked on all nodes in configuration c,
+// with the same argument in, and returns a combined result.
+func (c *Configuration) Prepare(ctx context.Context, in *PrepareMessage) (resp *PromiseMessage, err error) {
+	cd := gorums.QuorumCallData{
+		Message: in,
+		Method:  "keyvaluestorage.KeyValueStorage.Prepare",
+	}
+	cd.QuorumFunction = func(req protoreflect.ProtoMessage, replies map[uint32]protoreflect.ProtoMessage) (protoreflect.ProtoMessage, bool) {
+		r := make(map[uint32]*PromiseMessage, len(replies))
+		for k, v := range replies {
+			r[k] = v.(*PromiseMessage)
+		}
+		return c.qspec.PrepareQF(req.(*PrepareMessage), r)
+	}
+
+	res, err := c.RawConfiguration.QuorumCall(ctx, cd)
+	if err != nil {
+		return nil, err
+	}
+	return res.(*PromiseMessage), err
+}
+
+// Accept is a quorum call invoked on each node in configuration c,
+// with the argument returned by the provided function f, and returns the combined result.
+// The per node function f receives a copy of the AcceptMessage request argument and
+// returns a AcceptMessage manipulated to be passed to the given nodeID.
+// The function f must be thread-safe.
+func (c *Configuration) Accept(ctx context.Context, in *AcceptMessage, f func(*AcceptMessage, uint32) *AcceptMessage) (resp *LearnMessage, err error) {
+	cd := gorums.QuorumCallData{
+		Message: in,
+		Method:  "keyvaluestorage.KeyValueStorage.Accept",
+	}
+	cd.QuorumFunction = func(req protoreflect.ProtoMessage, replies map[uint32]protoreflect.ProtoMessage) (protoreflect.ProtoMessage, bool) {
+		r := make(map[uint32]*LearnMessage, len(replies))
+		for k, v := range replies {
+			r[k] = v.(*LearnMessage)
+		}
+		return c.qspec.AcceptQF(req.(*AcceptMessage), r)
+	}
+	cd.PerNodeArgFn = func(req protoreflect.ProtoMessage, nid uint32) protoreflect.ProtoMessage {
+		return f(req.(*AcceptMessage), nid)
+	}
+
+	res, err := c.RawConfiguration.QuorumCall(ctx, cd)
+	if err != nil {
+		return nil, err
+	}
+	return res.(*LearnMessage), err
 }
 
 // Write is a quorum call invoked on all nodes in configuration c,
@@ -268,6 +331,8 @@ type KeyValueStorage interface {
 	ReadLocal(ctx gorums.ServerCtx, request *ReadLocalRequest) (response *ReadResponse, err error)
 	Gossip(ctx gorums.ServerCtx, request *GossipMessage) (response *emptypb.Empty, err error)
 	PrintState(ctx gorums.ServerCtx, request *emptypb.Empty) (response *emptypb.Empty, err error)
+	Prepare(ctx gorums.ServerCtx, request *PrepareMessage) (response *PromiseMessage, err error)
+	Accept(ctx gorums.ServerCtx, request *AcceptMessage) (response *LearnMessage, err error)
 }
 
 func RegisterKeyValueStorageServer(srv *gorums.Server, impl KeyValueStorage) {
@@ -307,6 +372,30 @@ func RegisterKeyValueStorageServer(srv *gorums.Server, impl KeyValueStorage) {
 		resp, err := impl.PrintState(ctx, req)
 		gorums.SendMessage(ctx, finished, gorums.WrapMessage(in.Metadata, resp, err))
 	})
+	srv.RegisterHandler("keyvaluestorage.KeyValueStorage.Prepare", func(ctx gorums.ServerCtx, in *gorums.Message, finished chan<- *gorums.Message) {
+		req := in.Message.(*PrepareMessage)
+		defer ctx.Release()
+		resp, err := impl.Prepare(ctx, req)
+		gorums.SendMessage(ctx, finished, gorums.WrapMessage(in.Metadata, resp, err))
+	})
+	srv.RegisterHandler("keyvaluestorage.KeyValueStorage.Accept", func(ctx gorums.ServerCtx, in *gorums.Message, finished chan<- *gorums.Message) {
+		req := in.Message.(*AcceptMessage)
+		defer ctx.Release()
+		resp, err := impl.Accept(ctx, req)
+		gorums.SendMessage(ctx, finished, gorums.WrapMessage(in.Metadata, resp, err))
+	})
+}
+
+type internalLearnMessage struct {
+	nid   uint32
+	reply *LearnMessage
+	err   error
+}
+
+type internalPromiseMessage struct {
+	nid   uint32
+	reply *PromiseMessage
+	err   error
 }
 
 type internalReadAllResponse struct {
