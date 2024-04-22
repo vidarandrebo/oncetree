@@ -49,7 +49,7 @@ message AcceptMessage {
     int64 LocalValue = 3;
     int64 Timestamp = 4; // Local ts should be same as agg timestamp here
     string NodeID = 5;
-    string Target = 6;
+    string FailedNodeID = 6;
 }
 message LearnMessage {
     bool OK = 1;

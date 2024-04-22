@@ -13,14 +13,13 @@ func NewConcurrentMap[TKey comparable, TVal any]() *ConcurrentMap[TKey, TVal] {
 	}
 }
 
-
 // FromMap creates a new ConcurrentMap, inserts all the source elements and returns the new concurrentMap
 func FromMap[TKey comparable, TVal any](source map[TKey]TVal) *ConcurrentMap[TKey, TVal] {
-    newMap := NewConcurrentMap[TKey, TVal]()
-    for key, value := range source {
-        newMap.Set(key, value)
-    }
-    return newMap
+	newMap := NewConcurrentMap[TKey, TVal]()
+	for key, value := range source {
+		newMap.Set(key, value)
+	}
+	return newMap
 }
 
 func (cm *ConcurrentMap[TKey, TVal]) Set(key TKey, value TVal) {

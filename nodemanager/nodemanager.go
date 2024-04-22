@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"reflect"
 	"slices"
-	"sort"
 	"sync"
 
 	"github.com/vidarandrebo/oncetree/concurrent/hashset"
@@ -25,7 +24,6 @@ import (
 	"github.com/vidarandrebo/oncetree/concurrent/maps"
 	"github.com/vidarandrebo/oncetree/concurrent/mutex"
 
-	"github.com/relab/gorums"
 	nmprotos "github.com/vidarandrebo/oncetree/protos/nodemanager"
 )
 
@@ -496,39 +494,6 @@ func (nm *NodeManager) SendReady(nodeID string) {
 	}
 }
 
-// Join RPC will either accept the node as one of is children or return the address of another node.
-// If max fanout is NOT reached, the node will respond OK and include its ID.
-// If max fanout is reached, the node will respond NOT OK and include the address
-// of one of its children. The node will alternate between its children in repeated calls to Join.
-func (nm *NodeManager) Join(ctx gorums.ServerCtx, request *nmprotos.JoinRequest) (*nmprotos.JoinResponse, error) {
-	nm.logger.Debug(
-		"RPC Join",
-		slog.String("id", request.GetNodeID()),
-		slog.String("address", request.GetAddress()),
-	)
-	nm.joinMut.Lock()
-	defer nm.joinMut.Unlock()
-	response := &nmprotos.JoinResponse{
-		OK:          false,
-		NodeID:      nm.id,
-		NextAddress: "",
-	}
-	children := nm.Children()
-
-	// respond with one of the children's addresses if max fanout has been reached
-	if len(children) == consts.Fanout {
-		nextPathID := nm.NextJoinID()
-		nextPath, _ := nm.neighbours.Get(nextPathID)
-		response.OK = false
-		response.NextAddress = nextPath.Address
-		return response, nil
-	}
-	response.OK = true
-	response.NodeID = nm.id
-	nm.AddNeighbour(request.NodeID, request.Address, nmenums.Child)
-	return response, nil
-}
-
 // NextJoinID returns the id of the node to send the next join request to
 //
 // Should only be called if max fanout has been reached, fn will panic if node has no children
@@ -554,189 +519,4 @@ func (nm *NodeManager) NextJoinID() string {
 	// increment last join path, then return
 	*lastJoinID = children[lastJoinPathIndex+1].ID
 	return *lastJoinID
-}
-
-// Ready is used to signal to the parent that the newly joined node has created a gorums config and is ready to participate in the protocol.
-// A NeighbourReadyEvent is pushed to the eventbus
-func (nm *NodeManager) Ready(ctx gorums.ServerCtx, request *nmprotos.ReadyMessage) (*nmprotos.ReadyMessage, error) {
-	nm.logger.Debug(
-		"RPC Ready",
-		slog.String("id", request.GetNodeID()),
-	)
-	// check node exists
-	_, ok := nm.Neighbour(request.GetNodeID())
-	if !ok {
-		return &nmprotos.ReadyMessage{OK: false, NodeID: nm.id}, fmt.Errorf("node %s is not joined to this node", request.GetNodeID())
-	}
-
-	nm.eventBus.PushEvent(nmevents.NewNeighbourReadyEvent(request.GetNodeID()))
-	return &nmprotos.ReadyMessage{OK: true, NodeID: nm.id}, nil
-}
-
-func (nm *NodeManager) Prepare(ctx gorums.ServerCtx, request *nmprotos.PrepareMessage) (*nmprotos.PromiseMessage, error) {
-	nm.logger.Info("Prepare RPC",
-		"id", request.NodeID)
-	node, ok := nm.Neighbour(request.GetGroupID())
-	if !ok {
-		// this could mean a delayed prepare message from one of the nodes.
-		return &nmprotos.PromiseMessage{OK: false}, nil
-	}
-
-	if node.Group.epoch != request.Epoch {
-		panic("node's group info is not up to date, unrecoverable")
-	}
-	nm.recoveryProcess.mut.Lock()
-	defer nm.recoveryProcess.mut.Unlock()
-
-	if (nm.recoveryProcess.isActive) && (nm.recoveryProcess.groupID != request.GetGroupID()) {
-		nm.logger.Error("more than 1 concurrent failure, unrecoverable",
-			slog.String("id", request.GetGroupID()))
-		panic("more than 1 concurrent failure, unrecoverable")
-	}
-	if !nm.recoveryProcess.isActive {
-		nm.recoveryProcess.start(request.GetGroupID())
-	}
-
-	for _, member := range node.Group.members {
-		if member.Role == nmenums.Parent {
-			if member.ID == request.GetNodeID() {
-				nm.logger.Info("member is Parent, send leader promise",
-					slog.String("id", request.GetNodeID()))
-				nm.recoveryProcess.leaderID = request.GetNodeID()
-
-				// leader is added as a recovery node here
-				// it will be converted into a parent node in the end of the recovery session
-				_, neighbourExists := nm.Neighbour(member.ID)
-				if !neighbourExists {
-					nm.AddNeighbour(member.ID, member.Address, nmenums.Recovery)
-				}
-				return &nmprotos.PromiseMessage{OK: true}, nil
-			} else {
-				nm.logger.Info("member is not Parent, deny as leader",
-					slog.String("id", request.GetNodeID()))
-				return &nmprotos.PromiseMessage{OK: false}, nil
-			}
-		}
-	}
-
-	// sort member IDs alphabetically, then return OK if the id from the request is the first in the collection
-	nm.logger.Info("failed node has no parent, using lowest ID node as leader")
-	memberIDs := node.GroupMemberIDs()
-	sort.Strings(memberIDs)
-	rank := slices.Index(memberIDs, request.GetNodeID())
-	if rank == 0 {
-		nm.logger.Info("member has lowest ID, send leader promise",
-			slog.String("id", request.GetNodeID()))
-		nm.recoveryProcess.leaderID = request.GetNodeID()
-
-		// find member from request in collection
-		for _, member := range node.Group.members {
-			if member.ID != request.GetNodeID() {
-				continue
-			}
-			// leader is added as a recovery node here
-			// it will be converted into a parent node in the end of the recovery session
-			_, neighbourExists := nm.Neighbour(member.ID)
-			if !neighbourExists {
-				nm.AddNeighbour(member.ID, member.Address, nmenums.Recovery)
-			}
-		}
-		return &nmprotos.PromiseMessage{OK: true}, nil
-	}
-	return &nmprotos.PromiseMessage{OK: false}, nil
-}
-
-func (nm *NodeManager) Accept(ctx gorums.ServerCtx, request *nmprotos.AcceptMessage) (*nmprotos.LearnMessage, error) {
-	nm.logger.Info("Accept RPC",
-		"id", request.GetNodeID())
-	nm.recoveryProcess.mut.Lock()
-	defer nm.recoveryProcess.mut.Unlock()
-
-	// no ongoing recovery process
-	if !nm.recoveryProcess.isActive {
-		return &nmprotos.LearnMessage{OK: false}, nil
-	}
-	// requester is not leader
-	if nm.recoveryProcess.leaderID != request.GetNodeID() {
-		return &nmprotos.LearnMessage{OK: false}, nil
-	}
-
-	if nm.recoveryProcess.groupID != request.GetGroupID() {
-		nm.logger.Error("more than 1 concurrent failure, unrecoverable",
-			slog.String("id", request.GetGroupID()))
-		panic("more than 1 concurrent failure, unrecoverable")
-	}
-
-	failedNode, ok := nm.neighbours.Get(request.GetGroupID())
-	if !ok {
-		return &nmprotos.LearnMessage{OK: false}, nil
-	}
-	newParent := request.GetNewParent()[nm.id]
-
-	// new parent has to be part of the recovery group
-	containsNewParent := slices.Contains(failedNode.GroupMemberIDs(), newParent)
-	if !containsNewParent {
-		return &nmprotos.LearnMessage{OK: false}, nil
-	}
-
-	nm.recoveryProcess.newParent = newParent
-	return &nmprotos.LearnMessage{OK: true}, nil
-}
-
-func (nm *NodeManager) Commit(ctx gorums.ServerCtx, request *nmprotos.CommitMessage) {
-	nm.logger.Info("Commit RPC",
-		"failedID", request.GetGroupID())
-	nm.recoveryProcess.mut.Lock()
-	defer nm.recoveryProcess.mut.Unlock()
-	if request.GetGroupID() != nm.recoveryProcess.groupID {
-		panic("request's group is not same as stored in recoveryprocess")
-	}
-	newParentID := nm.recoveryProcess.newParent
-	newParent, ok := nm.neighbours.Get(newParentID)
-	if !ok {
-		panic("could not find new parent in neighbour map")
-	}
-	newParent.Role = nmenums.Parent
-	nm.neighbours.Delete(request.GetGroupID())
-	nm.blackList.Add(request.GetGroupID())
-	nm.eventBus.PushEvent(nmevents.NewNeigbourRemovedEvent(request.GetGroupID()))
-
-	newGorumsNeighbourMap := nm.GorumsNeighbourMap()
-	nm.gorumsProvider.ResetWithNewNodes(newGorumsNeighbourMap)
-
-	nm.eventBus.PushEvent(nmevents.NewNeighbourAddedEvent(newParentID, nmenums.Parent))
-	nm.recoveryProcess.stop()
-	nm.eventBus.PushTask(nm.SendGroupInfo)
-}
-
-func (nm *NodeManager) GroupInfo(ctx gorums.ServerCtx, request *nmprotos.GroupInfoMessage) {
-	// message arrive one by one from same client in gorums, so should not need to lock for epoch compare
-	node, ok := nm.neighbours.Get(request.GetGroupID())
-
-	// Group exists and is up to date
-	if ok && node.Group.epoch >= request.GetEpoch() {
-		return
-	}
-	if !ok {
-		// this warning will trigger if another node has sent its ready signal to node 'a' before this node has
-		// sent its ready signal to 'a' in the join process. This is expected when many nodes are
-		// joining the network concurrently. All group info will be distributed regardless of this.
-		nm.logger.Warn("received group info from unknown node",
-			slog.String("id", request.GetGroupID()))
-		return
-	}
-
-	newMembers := make([]GroupMember, 0)
-	for _, member := range request.GetMembers() {
-		newMembers = append(newMembers, NewGroupMember(
-			member.GetID(),
-			member.GetAddress(),
-			nmenums.NodeRole(member.GetRole())),
-		)
-	}
-	node.Group.epoch = request.GetEpoch()
-	node.Group.members = newMembers
-	nm.logger.Debug("group updated",
-		slog.String("id", request.GetGroupID()),
-		slog.String("group", node.Group.String()))
 }
