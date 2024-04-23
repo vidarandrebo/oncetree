@@ -24,6 +24,7 @@ format:
 clean:
 	rm -rf bin/
 	find protos/ -name "*pb.go" -type f | xargs rm
+	go clean -cache -testcache
 
 deps:
 	go install mvdan.cc/gofumpt@latest
