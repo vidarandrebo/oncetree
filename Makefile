@@ -16,7 +16,7 @@ logs:
 	-mkdir logs
 
 bench:
-	go test -run=None ./... -bench=. -benchmem -benchtime=100000x
+	go test -run=None ./... -bench=. -benchmem -benchtime=20s
 
 format:
 	find . -type f -name "*.go" | xargs gofumpt -w

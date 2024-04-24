@@ -47,9 +47,9 @@ func main() {
 			node := oncetree.NewNode(id, nodeMap[id], file)
 			// node.SetNeighboursFromNodeMap(nodeIDs, nodeMap)
 			if id == "0" {
-				node.Run("")
+				node.Run("", nil)
 			} else {
-				node.Run(":9080")
+				node.Run(":9080", nil)
 			}
 			wg.Done()
 		}()

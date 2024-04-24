@@ -47,6 +47,9 @@ func NewNode(id string, rpcAddr string, logFile io.Writer) *Node {
 		Level: consts.LogLevel,
 	}
 	logWriter := io.MultiWriter(logFile, os.Stderr)
+	if logFile == io.Discard {
+		logWriter = io.Discard
+	}
 	logHandler := slog.NewTextHandler(logWriter, &logHandlerOpts)
 
 	logger := slog.New(logHandler).With(slog.Group("node", slog.String("id", id)))
@@ -114,7 +117,7 @@ func (n *Node) startGorumsServer(addr string) {
 }
 
 // Run starts the main loop of the node
-func (n *Node) Run(knownAddr string) {
+func (n *Node) Run(knownAddr string, readyCallBack func()) {
 	ctx, cancel := context.WithCancel(context.Background())
 	wg := sync.WaitGroup{}
 	defer cancel()
@@ -130,6 +133,9 @@ func (n *Node) Run(knownAddr string) {
 	go n.eventbus.Run(ctx, &wg)
 
 	nodeExitMessage := ""
+	if readyCallBack != nil {
+		readyCallBack()
+	}
 mainLoop:
 	for {
 		select {

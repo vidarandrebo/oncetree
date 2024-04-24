@@ -4,19 +4,17 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"maps"
+	"os"
 	"testing"
 	"time"
 
-	"github.com/vidarandrebo/oncetree/storage/sqspec"
+	"github.com/vidarandrebo/oncetree/gorumsprovider"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/vidarandrebo/oncetree"
 	"github.com/vidarandrebo/oncetree/consts"
-	"google.golang.org/grpc/credentials/insecure"
-
-	"github.com/relab/gorums"
-	"github.com/stretchr/testify/assert"
 	kvsprotos "github.com/vidarandrebo/oncetree/protos/keyvaluestorage"
-	"google.golang.org/grpc"
 )
 
 // structure same as in testing_node.go
@@ -46,14 +44,27 @@ var (
 		":9088": 8,
 		":9089": 9,
 	}
-	logger = slog.Default().With(slog.Group("node", slog.String("module", "storage_test")))
+	logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+		AddSource:   false,
+		Level:       consts.LogLevel,
+		ReplaceAttr: nil,
+	})).With(slog.Group("node", slog.String("module", "storage_test")))
 )
+
+func storageConfig(provider *gorumsprovider.GorumsProvider) (*kvsprotos.Configuration, map[string]uint32) {
+	nodeMap := make(map[string]uint32)
+	maps.Copy(nodeMap, gorumsNodeMap)
+	provider.SetNodes(nodeMap)
+	cfg, _ := provider.StorageConfig()
+	return cfg, nodeMap
+}
 
 // TestStorageService_Write tests writing the same value to all nodes, and checking that the values has propagated to all nodes.
 func TestStorageService_shareAll(t *testing.T) {
 	testNodes, wg := oncetree.StartTestNodes(true)
-	time.Sleep(consts.GorumsDialTimeout)
-	mgr, cfg := createKeyValueStorageConfig()
+
+	gorumsProvider := gorumsprovider.New(logger)
+	cfg, nodeMap := storageConfig(gorumsProvider)
 
 	for _, node := range cfg.Nodes() {
 		_, writeErr := node.Write(context.Background(), &kvsprotos.WriteRequest{
@@ -66,19 +77,18 @@ func TestStorageService_shareAll(t *testing.T) {
 	time.Sleep(consts.RPCContextTimeout)
 
 	// add the new node to config
-	cfg, err := mgr.NewConfiguration(
-		&sqspec.QSpec{NumNodes: len(nodeAddrs) + 1},
-		cfg.WithNewNodes(gorums.WithNodeList([]string{":9090"})),
-	)
-	assert.Nil(t, err)
+	nodeMap[":9090"] = 10
+	gorumsProvider.ResetWithNewNodes(nodeMap)
+	cfg, ok := gorumsProvider.StorageConfig()
+	assert.True(t, ok)
 
 	responses, readErr := cfg.ReadAll(context.Background(), &kvsprotos.ReadRequest{
 		Key: 20,
 	})
 
 	// should be as many responses as number of nodes
-	assert.Equal(t, len(testNodes)+1, len(responses.GetValue()))
 	assert.Nil(t, readErr)
+	assert.Equal(t, len(testNodes)+1, len(responses.GetValue()))
 	// checks that all nodes including the new has the value 100 for key 20
 	for _, response := range responses.GetValue() {
 		assert.Equal(t, int64(100), response)
@@ -95,14 +105,14 @@ func TestStorageService_shareAll(t *testing.T) {
 // TestStorageService_Write tests writing the same value to all nodes, and checking that the values has propagated to all nodes.
 func TestStorageService_Write(t *testing.T) {
 	testNodes, wg := oncetree.StartTestNodes(false)
-	// time.Sleep(consts.GorumsDialTimeout)
-	_, cfg := createKeyValueStorageConfig()
 
-	for i, node := range cfg.Nodes() {
+	gorumsProvider := gorumsprovider.New(logger)
+	cfg, _ := storageConfig(gorumsProvider)
+
+	for _, node := range cfg.Nodes() {
 		_, writeErr := node.Write(context.Background(), &kvsprotos.WriteRequest{
-			Key:     20,
-			Value:   10,
-			WriteID: int64(i + 1),
+			Key:   20,
+			Value: 10,
 		})
 		assert.Nil(t, writeErr)
 	}
@@ -112,9 +122,9 @@ func TestStorageService_Write(t *testing.T) {
 		Key: 20,
 	})
 
+	assert.Nil(t, readErr)
 	// should be as many responses as number of nodes
 	assert.Equal(t, len(testNodes), len(responses.GetValue()))
-	assert.Nil(t, readErr)
 	for _, response := range responses.GetValue() {
 		assert.Equal(t, int64(100), response)
 	}
@@ -129,16 +139,17 @@ func TestStorageService_Write(t *testing.T) {
 func TestStorageService_WriteLocal(t *testing.T) {
 	shouldHaveValue := []uint32{1, 2}
 	shouldNotHaveValue := []uint32{0, 3, 4, 5, 6, 7, 8, 9}
+
 	testNodes, wg := oncetree.StartTestNodes(false)
-	time.Sleep(consts.GorumsDialTimeout)
-	_, cfg := createKeyValueStorageConfig()
-	node_0, exits := cfg.Node(0)
+	gorumsProvider := gorumsprovider.New(logger)
+	cfg, _ := storageConfig(gorumsProvider)
+
+	node0, exits := cfg.Node(0)
 	assert.True(t, exits)
 
-	_, writeErr := node_0.Write(context.Background(), &kvsprotos.WriteRequest{
-		Key:     25,
-		Value:   10,
-		WriteID: int64(1),
+	_, writeErr := node0.Write(context.Background(), &kvsprotos.WriteRequest{
+		Key:   25,
+		Value: 10,
 	})
 	assert.Nil(t, writeErr)
 	time.Sleep(consts.RPCContextTimeout)
@@ -177,41 +188,25 @@ func TestStorageService_WriteLocal(t *testing.T) {
 	wg.Wait()
 }
 
-// createKeyValueStorageConfig creates a new manager and returns an initialized configuration to use with the StorageService
-func createKeyValueStorageConfig() (*kvsprotos.Manager, *kvsprotos.Configuration) {
-	manager := kvsprotos.NewManager(
-		gorums.WithDialTimeout(consts.GorumsDialTimeout),
-		gorums.WithGrpcDialOptions(
-			grpc.WithBlock(),
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
-		),
-	)
-	cfg, err := manager.NewConfiguration(&sqspec.QSpec{NumNodes: len(nodeAddrs)}, gorums.WithNodeMap(gorumsNodeMap))
-	if err != nil {
-		panic("failed to create cfg")
-	}
-	return manager, cfg
-}
-
 func BenchmarkStorageService_Write(t *testing.B) {
 	testNodes, wg := oncetree.StartTestNodes(true)
-	logger.Info("sleep for dial timeout before starting to write")
-	time.Sleep(consts.RPCContextTimeout * 2)
 	logger.Info("starting write")
-	_, cfg := createKeyValueStorageConfig()
+	gorumsProvider := gorumsprovider.New(logger)
+	cfg, _ := storageConfig(gorumsProvider)
 	nodes := cfg.Nodes()
 
+	t.ResetTimer()
 	for i := 0; i < t.N; i++ {
 		_, err := nodes[i%len(nodes)].Write(context.Background(), &kvsprotos.WriteRequest{
-			Key:     int64(i % 1234),
-			Value:   int64(i),
-			WriteID: int64(i),
+			Key:   int64(i % 1234),
+			Value: int64(i),
 		})
 		if err != nil {
 			panic(err)
 		}
 		// log.Printf("[Bench] %d", i)
 	}
+	t.StopTimer()
 	logger.Info("sleep for rpc context timeout")
 	time.Sleep(consts.RPCContextTimeout)
 	logger.Info("benchmark done")
