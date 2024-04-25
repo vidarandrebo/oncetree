@@ -35,6 +35,7 @@ func (ss *StorageService) Write(ctx gorums.ServerCtx, request *kvsprotos.WriteRe
 		return &emptypb.Empty{}, nil
 	}
 	if readValueErr != nil {
+		localValue = TimestampedValue{Value: 0, Timestamp: 0}
 		ss.logger.Debug("node does not have local value for this key",
 			slog.Int64("key", request.GetKey()))
 	}
