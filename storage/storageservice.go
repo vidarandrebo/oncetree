@@ -29,13 +29,7 @@ type StorageService struct {
 	configProvider gorumsprovider.StorageConfigProvider
 }
 
-func NewStorageService(
-	id string,
-	logger *slog.Logger,
-	nodeManager *nodemanager.NodeManager,
-	eventBus *eventbus.EventBus,
-	configProvider gorumsprovider.StorageConfigProvider,
-) *StorageService {
+func NewStorageService(id string, logger *slog.Logger, nodeManager *nodemanager.NodeManager, eventBus *eventbus.EventBus, configProvider gorumsprovider.StorageConfigProvider) *StorageService {
 	ss := &StorageService{
 		id:             id,
 		logger:         logger.With(slog.Group("node", slog.String("module", "storageservice"))),
@@ -213,8 +207,12 @@ func (ss *StorageService) shareAll(nodeID string) {
 	for _, key := range ss.storage.Keys().Values() {
 		tsRef := ss.timestamp.RLock()
 		ts := *tsRef
-		value, err := ss.storage.ReadValueExceptNode(key, nodeID)
-		// TODO - get local value
+		localValue, err := ss.storage.ReadValueFromNode(key, ss.id)
+		if err != nil {
+			// not an error state in this case, just means that no local value exists for key
+			localValue = TimestampedValue{Value: 0, Timestamp: 0}
+		}
+		aggValue, err := ss.storage.ReadValueExceptNode(key, nodeID)
 		ss.timestamp.RUnlock(&tsRef)
 		if err != nil {
 			ss.logger.Error(
@@ -225,11 +223,12 @@ func (ss *StorageService) shareAll(nodeID string) {
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
 		request := &kvsprotos.GossipMessage{
-			NodeID:       ss.id,
-			Key:          key,
-			AggValue:     value,
-			AggTimestamp: ts,
-			// insert local value
+			NodeID:         ss.id,
+			Key:            key,
+			AggValue:       aggValue,
+			AggTimestamp:   ts,
+			LocalValue:     localValue.Value,
+			LocalTimestamp: localValue.Timestamp,
 		}
 		_, err = node.Gossip(ctx, request)
 		if err != nil {
@@ -244,32 +243,12 @@ func (ss *StorageService) shareAll(nodeID string) {
 		slog.String("id", nodeID))
 }
 
-// hasValueToGossip determines if any of the values stored will have to be gossiped
-//
-// This fn is needed to make the Gossip fn converge when the task-queue is bounded
-func (ss *StorageService) hasValueToGossip(origin string, valuesToGossip map[string]int64) bool {
-	for key := range valuesToGossip {
-		if (key != ss.id) && (key != origin) {
-			return true
-		}
-	}
-	return false
-}
-
-func (ss *StorageService) sendGossip(
-	originID string,
-	key int64,
-	values map[string]int64,
-	ts int64,
-	localValue TimestampedValue,
-	writeID int64,
-) {
+func (ss *StorageService) sendGossip(originID string, key int64, values map[string]int64, ts int64, localValue TimestampedValue) {
 	ss.logger.Debug(
 		"sendGossip",
 		slog.String("originID", originID),
 		slog.Int64("key", key),
 		slog.Int64("ts", ts),
-		slog.Int64("writeID", writeID),
 	)
 	sent := false
 	gorumsConfig, configExists := ss.configProvider.StorageConfig()
@@ -305,7 +284,6 @@ func (ss *StorageService) sendGossip(
 			AggTimestamp:   ts,
 			LocalValue:     localValue.Value,
 			LocalTimestamp: localValue.Timestamp,
-			WriteID:        writeID,
 		},
 		)
 		sent = true
@@ -324,10 +302,7 @@ func (ss *StorageService) sendGossip(
 	}
 }
 
-func (ss *StorageService) PrintState(
-	ctx gorums.ServerCtx,
-	request *emptypb.Empty,
-) (*emptypb.Empty, error) {
+func (ss *StorageService) PrintState(ctx gorums.ServerCtx, request *emptypb.Empty) (*emptypb.Empty, error) {
 	// ss.logger.Println(ss.storage.data)
 	return &emptypb.Empty{}, nil
 }

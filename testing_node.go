@@ -21,10 +21,12 @@ func StartTestNodes(discardLogs bool) (map[string]*Node, *sync.WaitGroup) {
 			"9": ":9089",
 		}
 	)
+	var readyWg sync.WaitGroup
 	var wg sync.WaitGroup
 	nodes := make(map[string]*Node)
 	var mut sync.Mutex
 	for _, id := range nodeIDs {
+		readyWg.Add(1)
 		id := id
 		wg.Add(1)
 		newNode := NewNode(id, nodeMap[id], io.Discard)
@@ -35,23 +37,26 @@ func StartTestNodes(discardLogs bool) (map[string]*Node, *sync.WaitGroup) {
 			mut.Lock()
 			node := nodes[id]
 			mut.Unlock()
-			node.Run("")
+			node.Run("", readyWg.Done)
 			wg.Done()
 		}()
 		mut.Lock()
 		go nodes[id].SetNeighboursFromNodeMap(nodeIDs, nodeMap)
 		mut.Unlock()
 	}
+	readyWg.Wait()
 	return nodes, &wg
 }
 
 func StartTestNode(discardLogs bool) (*Node, *sync.WaitGroup) {
+	var readyWg sync.WaitGroup
+	readyWg.Add(1)
 	var wg sync.WaitGroup
 	id := "10"
 	wg.Add(1)
 	node := NewNode(id, ":9090", io.Discard)
 	go func() {
-		node.Run(":9080")
+		node.Run(":9080", readyWg.Done)
 		wg.Done()
 	}()
 	return node, &wg

@@ -37,9 +37,8 @@ func (c *Client) Run() {
 			panic("node does not exists")
 		}
 		response, err := storageNode.Write(context.Background(), &kvsprotos.WriteRequest{
-			Key:     int64((i % 100) + 1),
-			Value:   int64(i + 2),
-			WriteID: int64(i + 1),
+			Key:   int64((i % 100) + 1),
+			Value: int64(i + 2),
 		})
 		if err != nil {
 			fmt.Println(response)

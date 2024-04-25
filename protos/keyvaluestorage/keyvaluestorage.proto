@@ -19,7 +19,6 @@ message ReadAllResponse {map<string, int64> Value = 1;}
 message WriteRequest {
     int64 Key = 1;
     int64 Value = 2;
-    int64 WriteID = 3;
 }
 
 message GossipMessage {
@@ -29,7 +28,6 @@ message GossipMessage {
     int64 AggTimestamp = 4;
     int64 LocalValue = 5;
     int64 LocalTimestamp = 6;
-    int64 WriteID = 7;
 }
 
 message PrepareMessage {

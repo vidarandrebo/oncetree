@@ -9,18 +9,10 @@ import (
 )
 
 // Write RPC is used to set the local value at a given key for a single node
-func (ss *StorageService) Write(
-	ctx gorums.ServerCtx,
-	request *kvsprotos.WriteRequest,
-) (*emptypb.Empty, error) {
-	ss.logger.Debug(
-		"RPC Write",
-		"key",
-		request.GetKey(),
-		"value",
-		request.GetValue(),
-		"writeID",
-		request.GetWriteID(),
+func (ss *StorageService) Write(ctx gorums.ServerCtx, request *kvsprotos.WriteRequest) (*emptypb.Empty, error) {
+	ss.logger.Debug("RPC Write",
+		slog.Int64("key", request.GetKey()),
+		slog.Int64("value", request.GetValue()),
 	)
 	ts := ss.timestamp.Lock()
 	*ts++
@@ -43,11 +35,12 @@ func (ss *StorageService) Write(
 		return &emptypb.Empty{}, nil
 	}
 	if readValueErr != nil {
+		localValue = TimestampedValue{Value: 0, Timestamp: 0}
 		ss.logger.Debug("node does not have local value for this key",
 			slog.Int64("key", request.GetKey()))
 	}
 
-	if ok && ss.hasValueToGossip(ss.id, valuesToGossip) {
+	if ok {
 		// only start gossip if write was successful
 		ss.sendGossip(
 			ss.id,
@@ -55,7 +48,6 @@ func (ss *StorageService) Write(
 			valuesToGossip,
 			writeTs,
 			TimestampedValue{Value: localValue.Value, Timestamp: writeTs},
-			request.GetWriteID(),
 		)
 	} else {
 		ss.logger.Warn(

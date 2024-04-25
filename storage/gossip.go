@@ -15,7 +15,6 @@ func (ss *StorageService) Gossip(ctx gorums.ServerCtx, request *kvsprotos.Gossip
 		slog.Int64("value", request.GetAggValue()),
 		slog.Int64("ts", request.GetAggTimestamp()),
 		slog.String("nodeID", request.GetNodeID()),
-		slog.Int64("writeID", request.GetWriteID()),
 	)
 	ctx.Release()
 	ts := ss.timestamp.Lock()
@@ -52,8 +51,8 @@ func (ss *StorageService) Gossip(ctx gorums.ServerCtx, request *kvsprotos.Gossip
 			slog.String("id", request.GetNodeID()))
 	}
 
-	if updated && ss.hasValueToGossip(request.GetNodeID(), valuesToGossip) {
-		go ss.sendGossip(request.NodeID, request.GetKey(), valuesToGossip, writeTs, localValue, request.GetWriteID())
+	if updated {
+		go ss.sendGossip(request.NodeID, request.GetKey(), valuesToGossip, writeTs, localValue)
 	}
 	return &emptypb.Empty{}, nil
 }

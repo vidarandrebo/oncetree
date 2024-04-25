@@ -15,6 +15,10 @@ func (ss *StorageService) Accept(ctx gorums.ServerCtx, request *kvsprotos.Accept
 		slog.Int64("localValue", request.GetLocalValue()),
 		slog.Int64("aggValue", request.GetAggValue()))
 
+	tsRef := ss.timestamp.Lock()
+	*tsRef++
+	ts := *tsRef
+
 	ss.storage.ChangeKeyValueOwnership(
 		request.GetKey(),
 		request.GetAggValue(),
@@ -23,6 +27,22 @@ func (ss *StorageService) Accept(ctx gorums.ServerCtx, request *kvsprotos.Accept
 		request.GetFailedNodeID(),
 		request.GetNodeID(),
 	)
-	// TODO - send gossip
+
+	localValue, err := ss.storage.ReadValueFromNode(request.GetKey(), ss.id)
+	if err != nil {
+		ss.logger.Warn("failed to get local value to gossip",
+			slog.Any("err", err),
+			slog.Int64("key", request.GetKey()))
+		localValue = TimestampedValue{Value: 0, Timestamp: 0}
+	}
+
+	valuesToGossip, err := ss.storage.GossipValues(request.GetKey(), ss.nodeManager.NeighbourIDs())
+	if err != nil {
+		ss.logger.Error("failed to retrieve values to gossip",
+			slog.Int64("key", request.GetKey()))
+	}
+	ss.timestamp.Unlock(&tsRef)
+
+	go ss.sendGossip(request.GetNodeID(), request.GetKey(), valuesToGossip, ts, localValue)
 	return &kvsprotos.LearnMessage{OK: true}, nil
 }
