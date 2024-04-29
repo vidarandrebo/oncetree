@@ -17,7 +17,6 @@ import (
 	"github.com/vidarandrebo/oncetree/failuredetector/fdevents"
 	"github.com/vidarandrebo/oncetree/gorumsprovider"
 	"github.com/vidarandrebo/oncetree/nodemanager"
-	"github.com/vidarandrebo/oncetree/nodemanager/nmenums"
 	fdprotos "github.com/vidarandrebo/oncetree/protos/failuredetector"
 	kvsprotos "github.com/vidarandrebo/oncetree/protos/keyvaluestorage"
 	"github.com/vidarandrebo/oncetree/protos/node"
@@ -164,43 +163,4 @@ func (n *Node) Crash(ctx gorums.ServerCtx, request *emptypb.Empty) (response *em
 	n.logger.Debug("RPC Crash")
 	n.Stop("crash RPC")
 	return &emptypb.Empty{}, nil
-}
-
-// SetNeighboursFromNodeMap assumes a binary tree as slice where a nodes children are at index 2i+1 and 2i+2
-// Uses both a slice and a maps to ensure consistent iteration order
-func (n *Node) SetNeighboursFromNodeMap(nodeIDs []string, nodes map[string]string, wg *sync.WaitGroup) {
-	for i, nodeID := range nodeIDs {
-		// find n as a child of current node -> current node is n's parent
-		if len(nodeIDs) > (2*i+1) && nodeIDs[2*i+1] == n.id {
-			n.nodeManager.AddNeighbour(nodeID, nodes[nodeID], nmenums.Parent)
-			continue
-		}
-		if len(nodeIDs) > (2*i+2) && nodeIDs[2*i+2] == n.id {
-			n.nodeManager.AddNeighbour(nodeID, nodes[nodeID], nmenums.Parent)
-			continue
-		}
-
-		// find n -> 2i+1 and 2i+2 are n's children if they exist
-		if nodeID == n.id {
-			if len(nodeIDs) > (2*i + 1) {
-				childId := nodeIDs[2*i+1]
-				n.nodeManager.AddNeighbour(childId, nodes[childId], nmenums.Child)
-			}
-			if len(nodeIDs) > (2*i + 2) {
-				childId := nodeIDs[2*i+2]
-				n.nodeManager.AddNeighbour(childId, nodes[childId], nmenums.Child)
-			}
-			continue
-		}
-
-	}
-	n.logger.Info(
-		"tree-info",
-		slog.Any("parent", n.nodeManager.Parent()),
-	)
-	n.logger.Info(
-		"tree-info",
-		slog.Any("children", n.nodeManager.Children()),
-	)
-	wg.Done()
 }

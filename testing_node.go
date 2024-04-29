@@ -26,7 +26,7 @@ func StartTestNodes(discardLogs bool) (map[string]*Node, *sync.WaitGroup) {
 	nodes := make(map[string]*Node)
 	var mut sync.Mutex
 	for _, id := range nodeIDs {
-		readyWg.Add(2)
+		readyWg.Add(1)
 		id := id
 		wg.Add(1)
 		newNode := NewNode(id, nodeMap[id], io.Discard)
@@ -37,17 +37,11 @@ func StartTestNodes(discardLogs bool) (map[string]*Node, *sync.WaitGroup) {
 			mut.Lock()
 			node := nodes[id]
 			mut.Unlock()
-			node.Run("", readyWg.Done)
+			node.Run(GetParentFromNodeMap(id, nodeIDs, nodeMap), readyWg.Done)
 			wg.Done()
 		}()
-		mut.Lock()
-		go nodes[id].SetNeighboursFromNodeMap(nodeIDs, nodeMap, &readyWg)
-		mut.Unlock()
 	}
 	readyWg.Wait()
-	for _, node := range nodes {
-		node.nodeManager.SendGroupInfo()
-	}
 	return nodes, &wg
 }
 
@@ -63,4 +57,19 @@ func StartTestNode(discardLogs bool) (*Node, *sync.WaitGroup) {
 		wg.Done()
 	}()
 	return node, &wg
+}
+
+// GetParentFromNodeMap assumes a binary tree as slice where a nodes children are at index 2i+1 and 2i+2
+// Uses both a slice and a maps to ensure consistent iteration order
+func GetParentFromNodeMap(id string, nodeIDs []string, nodes map[string]string) string {
+	for i, nodeID := range nodeIDs {
+		// find n as a child of current node -> current node is n's parent
+		if len(nodeIDs) > (2*i+1) && nodeIDs[2*i+1] == id {
+			return nodes[nodeID]
+		}
+		if len(nodeIDs) > (2*i+2) && nodeIDs[2*i+2] == id {
+			return nodes[nodeID]
+		}
+	}
+	return ""
 }
