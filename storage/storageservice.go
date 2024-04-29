@@ -132,7 +132,7 @@ func (ss *StorageService) SendAccept(failedNodeID string) {
 				slog.Int64("key", key))
 		}
 		ss.storage.DeleteAgg(key, failedNodeID)
-		ss.storage.DeleteLocal(key, ss.id)
+		ss.storage.DeleteLocal(key, failedNodeID)
 
 		// does not user storage.ReadLocalValue, since the aggregated value IS the local value in this case, and self's local value cannot be found using ReadLocalValue
 		// both the write and read must happen while ts mutex is locked to avoid inconsistencies

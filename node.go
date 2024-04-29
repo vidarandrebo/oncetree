@@ -47,9 +47,9 @@ func NewNode(id string, rpcAddr string, logFile io.Writer) *Node {
 		Level: consts.LogLevel,
 	}
 	logWriter := io.MultiWriter(logFile, os.Stderr)
-	if logFile == io.Discard {
-		logWriter = io.Discard
-	}
+	//	if logFile == io.Discard {
+	//		logWriter = io.Discard
+	//	}
 	logHandler := slog.NewTextHandler(logWriter, &logHandlerOpts)
 
 	logger := slog.New(logHandler).With(slog.Group("node", slog.String("id", id)))
@@ -151,7 +151,13 @@ mainLoop:
 }
 
 func (n *Node) Stop(msg string) {
-	n.stopChan <- msg
+	select {
+	case n.stopChan <- msg:
+		n.logger.Info("pushed to stop chan")
+	default:
+		n.logger.Info("no log chan, exiting")
+
+	}
 }
 
 func (n *Node) Crash(ctx gorums.ServerCtx, request *emptypb.Empty) (response *emptypb.Empty, err error) {
@@ -162,7 +168,7 @@ func (n *Node) Crash(ctx gorums.ServerCtx, request *emptypb.Empty) (response *em
 
 // SetNeighboursFromNodeMap assumes a binary tree as slice where a nodes children are at index 2i+1 and 2i+2
 // Uses both a slice and a maps to ensure consistent iteration order
-func (n *Node) SetNeighboursFromNodeMap(nodeIDs []string, nodes map[string]string) {
+func (n *Node) SetNeighboursFromNodeMap(nodeIDs []string, nodes map[string]string, wg *sync.WaitGroup) {
 	for i, nodeID := range nodeIDs {
 		// find n as a child of current node -> current node is n's parent
 		if len(nodeIDs) > (2*i+1) && nodeIDs[2*i+1] == n.id {
@@ -196,4 +202,5 @@ func (n *Node) SetNeighboursFromNodeMap(nodeIDs []string, nodes map[string]strin
 		"tree-info",
 		slog.Any("children", n.nodeManager.Children()),
 	)
+	wg.Done()
 }

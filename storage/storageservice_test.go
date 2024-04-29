@@ -10,11 +10,13 @@ import (
 	"time"
 
 	"github.com/vidarandrebo/oncetree/gorumsprovider"
+	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/vidarandrebo/oncetree"
 	"github.com/vidarandrebo/oncetree/consts"
 	kvsprotos "github.com/vidarandrebo/oncetree/protos/keyvaluestorage"
+	nodeprotos "github.com/vidarandrebo/oncetree/protos/node"
 )
 
 // structure same as in testing_node.go
@@ -50,6 +52,14 @@ var (
 		ReplaceAttr: nil,
 	})).With(slog.Group("node", slog.String("module", "storage_test")))
 )
+
+func nodeConfig(provider *gorumsprovider.GorumsProvider) (*nodeprotos.Configuration, map[string]uint32) {
+	nodeMap := make(map[string]uint32)
+	maps.Copy(nodeMap, gorumsNodeMap)
+	provider.SetNodes(nodeMap)
+	cfg, _ := provider.NodeConfig()
+	return cfg, nodeMap
+}
 
 func storageConfig(provider *gorumsprovider.GorumsProvider) (*kvsprotos.Configuration, map[string]uint32) {
 	nodeMap := make(map[string]uint32)
@@ -188,6 +198,69 @@ func TestStorageService_WriteLocal(t *testing.T) {
 	wg.Wait()
 }
 
+// TestStorageService_RecoverValue crashes a node, then checks if the values are inherited by its parent
+// and distributed as a local value to its group
+func TestStorageService_RecoverValues(t *testing.T) {
+	shouldHaveValue := []uint32{1, 5, 6}
+	shouldNotHaveValue := []uint32{0, 3, 4, 7, 8, 9}
+
+	testNodes, wg := oncetree.StartTestNodes(false)
+	gorumsProvider := gorumsprovider.New(logger)
+	storageCfg, _ := storageConfig(gorumsProvider)
+	nodeCfg, _ := nodeConfig(gorumsProvider)
+
+	storageNode2, exists := storageCfg.Node(2)
+	assert.True(t, exists)
+
+	ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
+	_, writeErr := storageNode2.Write(ctx, &kvsprotos.WriteRequest{
+		Key:   25,
+		Value: 10,
+	})
+	cancel()
+	assert.Nil(t, writeErr)
+	time.Sleep(consts.RPCContextTimeout)
+
+	// crash node 2
+	node2, exists := nodeCfg.Node(2)
+	ctx, cancel = context.WithTimeout(context.Background(), consts.RPCContextTimeout)
+	_, err := node2.Crash(ctx, &emptypb.Empty{})
+	cancel()
+	assert.Nil(t, err)
+	time.Sleep(consts.FailureDetectionInterval * 3)
+
+	for _, id := range shouldNotHaveValue {
+		node, exists := storageCfg.Node(id)
+		assert.True(t, exists)
+		ctx, cancel = context.WithTimeout(context.Background(), consts.RPCContextTimeout)
+		response, err := node.ReadLocal(ctx, &kvsprotos.ReadLocalRequest{
+			Key:    25,
+			NodeID: "0",
+		})
+		cancel()
+		assert.NotNil(t, err)
+		assert.Equal(t, int64(0), response.GetValue())
+	}
+
+	for _, id := range shouldHaveValue {
+		node, exists := storageCfg.Node(id)
+		assert.True(t, exists)
+		ctx, cancel = context.WithTimeout(context.Background(), consts.RPCContextTimeout)
+		response, err := node.ReadLocal(ctx, &kvsprotos.ReadLocalRequest{
+			Key:    25,
+			NodeID: "0",
+		})
+		cancel()
+		assert.Nil(t, err)
+		assert.Equal(t, int64(10), response.GetValue())
+	}
+
+	for _, node := range testNodes {
+		node.Stop("stopped by test")
+	}
+	wg.Wait()
+}
+
 func BenchmarkStorageService_Write(t *testing.B) {
 	testNodes, wg := oncetree.StartTestNodes(true)
 	logger.Info("starting write")
@@ -204,7 +277,6 @@ func BenchmarkStorageService_Write(t *testing.B) {
 		if err != nil {
 			panic(err)
 		}
-		// log.Printf("[Bench] %d", i)
 	}
 	t.StopTimer()
 	logger.Info("sleep for rpc context timeout")
