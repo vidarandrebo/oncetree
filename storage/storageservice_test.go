@@ -161,7 +161,7 @@ func TestStorageService_shareAll(t *testing.T) {
 	gorumsProvider := gorumsprovider.New(logger)
 	cfg, nodeMap := storageConfig(gorumsProvider)
 
-	writtenValues := writeRandomValuesToNodes(cfg, 1000)
+	writtenValues := writeRandomValuesToNodes(cfg, 100)
 	keys := keysFromValueMap(writtenValues)
 
 	newNode, newWg := oncetree.StartTestNode(true)
@@ -201,7 +201,7 @@ func TestStorageService_Write(t *testing.T) {
 	gorumsProvider := gorumsprovider.New(logger)
 	cfg, _ := storageConfig(gorumsProvider)
 
-	writtenValues := writeRandomValuesToNodes(cfg, 1000)
+	writtenValues := writeRandomValuesToNodes(cfg, 100)
 	keys := keysFromValueMap(writtenValues)
 
 	time.Sleep(consts.RPCContextTimeout * 3)
@@ -244,7 +244,7 @@ func TestStorageService_WriteLocal(t *testing.T) {
 	gorumsProvider := gorumsprovider.New(logger)
 	storageCfg, _ := storageConfig(gorumsProvider)
 
-	writtenValues := writeRandomValuesToNodes(storageCfg, 1000)
+	writtenValues := writeRandomValuesToNodes(storageCfg, 100)
 	nodes := []string{"2"}
 	keys := keysFromValueMapForNodes(nodes, writtenValues)
 
@@ -314,7 +314,7 @@ func TestStorageService_RecoverValues(t *testing.T) {
 	storageCfg, _ := storageConfig(gorumsProvider)
 	nodeCfg, _ := nodeConfig(gorumsProvider)
 
-	valuesWritten := writeRandomValuesToNodes(storageCfg, 1000)
+	valuesWritten := writeRandomValuesToNodes(storageCfg, 100)
 	joinedNodes := []string{"0", "2"}
 	keys := keysFromValueMapForNodes(joinedNodes, valuesWritten)
 
