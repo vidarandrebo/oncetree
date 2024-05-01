@@ -156,7 +156,6 @@ func writeRandomValuesToNodes(cfg *kvsprotos.Configuration, n int) map[string]ma
 // TestStorageService_shareAll tests writing the values to all nodes, and checking that the values have propagated to all nodes.
 func TestStorageService_shareAll(t *testing.T) {
 	testNodes, wg := oncetree.StartTestNodes(true)
-	time.Sleep(consts.RPCContextTimeout)
 
 	gorumsProvider := gorumsprovider.New(logger)
 	cfg, nodeMap := storageConfig(gorumsProvider)
@@ -165,7 +164,6 @@ func TestStorageService_shareAll(t *testing.T) {
 	keys := keysFromValueMap(writtenValues)
 
 	newNode, newWg := oncetree.StartTestNode(true)
-	time.Sleep(consts.RPCContextTimeout)
 
 	// add the new node to config
 	nodeMap[":9090"] = 10
@@ -198,7 +196,6 @@ func TestStorageService_shareAll(t *testing.T) {
 // TestStorageService_Write tests writing to all nodes and check that the values have propagated to all nodes
 func TestStorageService_Write(t *testing.T) {
 	testNodes, wg := oncetree.StartTestNodes(false)
-	time.Sleep(consts.RPCContextTimeout)
 
 	gorumsProvider := gorumsprovider.New(logger)
 	cfg, _ := storageConfig(gorumsProvider)
@@ -243,7 +240,6 @@ func TestStorageService_WriteLocal(t *testing.T) {
 	shouldNotHaveValue := []uint32{1, 2, 3, 4, 7, 8, 9}
 
 	testNodes, wg := oncetree.StartTestNodes(false)
-	time.Sleep(consts.RPCContextTimeout)
 	gorumsProvider := gorumsprovider.New(logger)
 	storageCfg, _ := storageConfig(gorumsProvider)
 
@@ -313,7 +309,6 @@ func TestStorageService_RecoverValues(t *testing.T) {
 	shouldNotHaveValue := []uint32{0, 3, 4, 7, 8, 9}
 
 	testNodes, wg := oncetree.StartTestNodes(false)
-	time.Sleep(consts.RPCContextTimeout)
 	gorumsProvider := gorumsprovider.New(logger)
 	storageCfg, _ := storageConfig(gorumsProvider)
 	nodeCfg, _ := nodeConfig(gorumsProvider)
@@ -369,7 +364,6 @@ func TestStorageService_RecoverValues(t *testing.T) {
 
 func BenchmarkStorageService_Write(t *testing.B) {
 	testNodes, wg := oncetree.StartTestNodes(true)
-	time.Sleep(consts.RPCContextTimeout)
 	logger.Info("starting write")
 	gorumsProvider := gorumsprovider.New(logger)
 	cfg, _ := storageConfig(gorumsProvider)
