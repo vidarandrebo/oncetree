@@ -2,6 +2,7 @@ package storage_test
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"maps"
 	"math"
@@ -146,7 +147,7 @@ func writeRandomValuesToNodes(cfg *kvsprotos.Configuration, n int) map[string]ma
 			})
 			cancel()
 			if err != nil {
-				panic("failed to write to node")
+				panic(fmt.Sprintf("failed to write value to node %s", nodeID))
 			}
 		}
 	}
