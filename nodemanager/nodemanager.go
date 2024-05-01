@@ -482,6 +482,9 @@ func (nm *NodeManager) SendReady(nodeID string) {
 		)
 	}
 	node, ok := cfg.Node(gorumsID)
+	if !ok {
+		panic("node not in config")
+	}
 	response, err := node.Ready(ctx, &nmprotos.ReadyMessage{NodeID: nm.id})
 	if err != nil {
 		nm.logger.Error(

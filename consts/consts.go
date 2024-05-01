@@ -9,7 +9,7 @@ const (
 	GorumsDialTimeout        = 3 * time.Second
 	RPCContextTimeout        = 5 * time.Second
 	HeartbeatSendInterval    = 1 * time.Second
-	FailureDetectionInterval = 3 * HeartbeatSendInterval
+	FailureDetectionInterval = 5 * HeartbeatSendInterval
 	Fanout                   = 2
 	TimeFormat               = "[11:11:11]"
 	LogLevel                 = slog.LevelInfo

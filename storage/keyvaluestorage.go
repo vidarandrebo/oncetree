@@ -2,6 +2,7 @@ package storage
 
 import (
 	"fmt"
+	"log"
 	"sync"
 
 	"github.com/vidarandrebo/oncetree/concurrent/hashset"
@@ -182,8 +183,14 @@ func (kvs *KeyValueStorage) deleteAgg(key int64, nodeID string) {
 func (kvs *KeyValueStorage) ChangeKeyValueOwnership(key int64, aggValue int64, localValue int64, ts int64, oldOwner string, newOwner string) {
 	kvs.mut.Lock()
 	defer kvs.mut.Unlock()
-	kvs.writeLocalValue(key, localValue, ts, newOwner)
-	kvs.writeValue(key, aggValue, ts, newOwner)
+	wroteLocal := kvs.writeLocalValue(key, localValue, ts, newOwner)
+	if !wroteLocal {
+		log.Println("did not write local value")
+	}
+	wroteValue := kvs.writeValue(key, aggValue, ts, newOwner)
+	if !wroteValue {
+		fmt.Println("did not write value")
+	}
 	kvs.deleteAgg(key, oldOwner)
 	kvs.deleteLocal(key, oldOwner)
 }

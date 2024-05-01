@@ -46,9 +46,9 @@ func NewNode(id string, rpcAddr string, logFile io.Writer) *Node {
 		Level: consts.LogLevel,
 	}
 	logWriter := io.MultiWriter(logFile, os.Stderr)
-	//	if logFile == io.Discard {
-	//		logWriter = io.Discard
-	//	}
+	if logFile == io.Discard {
+		logWriter = io.Discard
+	}
 	logHandler := slog.NewTextHandler(logWriter, &logHandlerOpts)
 
 	logger := slog.New(logHandler).With(slog.Group("node", slog.String("id", id)))

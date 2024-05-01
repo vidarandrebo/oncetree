@@ -26,6 +26,7 @@ func (ss *StorageService) ReadLocal(ctx gorums.ServerCtx, request *kvsprotos.Rea
 		ss.logger.Info("ReadLocal rpc", slog.Int64("value", -1))
 		return &kvsprotos.ReadResponse{Value: 0}, errors.New("value not found")
 	}
+	ss.logger.Info("ReadLocal rpc", slog.Int64("value", value.Value))
 	return &kvsprotos.ReadResponse{Value: value.Value}, nil
 }
 

@@ -2,12 +2,17 @@ package storage_test
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"maps"
+	"math"
+	"math/rand"
 	"os"
+	"slices"
+	"strconv"
 	"testing"
 	"time"
+
+	"github.com/vidarandrebo/oncetree/concurrent/hashset"
 
 	"github.com/vidarandrebo/oncetree/gorumsprovider"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -53,6 +58,62 @@ var (
 	})).With(slog.Group("node", slog.String("module", "storage_test")))
 )
 
+func generateRandomWrites(n int) map[string]map[int64]int64 {
+	// rand.Seed(0)
+	values := make(map[string]map[int64]int64)
+	for _, id := range nodeIDs {
+		values[id] = make(map[int64]int64)
+		for i := 0; i < n; i++ {
+			values[id][rand.Int63n(int64(n))] = rand.Int63n(math.MaxInt32)
+		}
+	}
+	return values
+}
+
+func keysFromValueMap(valueMap map[string]map[int64]int64) hashset.HashSet[int64] {
+	hashSet := hashset.NewHashSet[int64]()
+	for _, values := range valueMap {
+		for key := range values {
+			hashSet.Add(key)
+		}
+	}
+	return hashSet
+}
+
+func keysFromValueMapForNodes(nodes []string, valueMap map[string]map[int64]int64) hashset.HashSet[int64] {
+	hashSet := hashset.NewHashSet[int64]()
+	for nodeID, values := range valueMap {
+		if slices.Contains(nodes, nodeID) {
+			for key := range values {
+				hashSet.Add(key)
+			}
+		}
+	}
+	return hashSet
+}
+
+func aggValueForKey(key int64, allValue map[string]map[int64]int64) int64 {
+	sum := int64(0)
+	for _, values := range allValue {
+		value, ok := values[key]
+		if ok {
+			sum += value
+		}
+	}
+	return sum
+}
+
+func nodesValueForKey(key int64, nodes []string, allValues map[string]map[int64]int64) int64 {
+	sum := int64(0)
+	for id, values := range allValues {
+		value, ok := values[key]
+		if ok && slices.Contains(nodes, id) {
+			sum += value
+		}
+	}
+	return sum
+}
+
 func nodeConfig(provider *gorumsprovider.GorumsProvider) (*nodeprotos.Configuration, map[string]uint32) {
 	nodeMap := make(map[string]uint32)
 	maps.Copy(nodeMap, gorumsNodeMap)
@@ -69,20 +130,40 @@ func storageConfig(provider *gorumsprovider.GorumsProvider) (*kvsprotos.Configur
 	return cfg, nodeMap
 }
 
-// TestStorageService_Write tests writing the same value to all nodes, and checking that the values has propagated to all nodes.
+func writeRandomValuesToNodes(cfg *kvsprotos.Configuration, n int) map[string]map[int64]int64 {
+	valuesToWrite := generateRandomWrites(n)
+	for nodeID, values := range valuesToWrite {
+		gorumsID, _ := strconv.Atoi(nodeID)
+		node, ok := cfg.Node(uint32(gorumsID))
+		if !ok {
+			panic("failed to find node in config")
+		}
+		for key, value := range values {
+			ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
+			_, err := node.Write(ctx, &kvsprotos.WriteRequest{
+				Key:   key,
+				Value: value,
+			})
+			cancel()
+			if err != nil {
+				panic("failed to write to node")
+			}
+		}
+	}
+	return valuesToWrite
+}
+
+// TestStorageService_shareAll tests writing the values to all nodes, and checking that the values have propagated to all nodes.
 func TestStorageService_shareAll(t *testing.T) {
 	testNodes, wg := oncetree.StartTestNodes(true)
+	time.Sleep(consts.RPCContextTimeout)
 
 	gorumsProvider := gorumsprovider.New(logger)
 	cfg, nodeMap := storageConfig(gorumsProvider)
 
-	for _, node := range cfg.Nodes() {
-		_, writeErr := node.Write(context.Background(), &kvsprotos.WriteRequest{
-			Key:   20,
-			Value: 10,
-		})
-		assert.Nil(t, writeErr)
-	}
+	writtenValues := writeRandomValuesToNodes(cfg, 1000)
+	keys := keysFromValueMap(writtenValues)
+
 	newNode, newWg := oncetree.StartTestNode(true)
 	time.Sleep(consts.RPCContextTimeout)
 
@@ -92,16 +173,18 @@ func TestStorageService_shareAll(t *testing.T) {
 	cfg, ok := gorumsProvider.StorageConfig()
 	assert.True(t, ok)
 
-	responses, readErr := cfg.ReadAll(context.Background(), &kvsprotos.ReadRequest{
-		Key: 20,
-	})
-
-	// should be as many responses as number of nodes
-	assert.Nil(t, readErr)
-	assert.Equal(t, len(testNodes)+1, len(responses.GetValue()))
-	// checks that all nodes including the new has the value 100 for key 20
-	for _, response := range responses.GetValue() {
-		assert.Equal(t, int64(100), response)
+	for _, key := range keys.Values() {
+		responses, readErr := cfg.ReadAll(context.Background(), &kvsprotos.ReadRequest{
+			Key: key,
+		})
+		// should be as many responses as number of nodes
+		assert.Nil(t, readErr)
+		assert.Equal(t, len(testNodes)+1, len(responses.GetValue()))
+		// checks that all nodes including the new has the value 100 for key 20
+		shouldBe := aggValueForKey(key, writtenValues)
+		for _, actual := range responses.GetValue() {
+			assert.Equal(t, shouldBe, actual)
+		}
 	}
 
 	newNode.Stop("stopped by test")
@@ -112,31 +195,31 @@ func TestStorageService_shareAll(t *testing.T) {
 	newWg.Wait()
 }
 
-// TestStorageService_Write tests writing the same value to all nodes, and checking that the values has propagated to all nodes.
+// TestStorageService_Write tests writing to all nodes and check that the values have propagated to all nodes
 func TestStorageService_Write(t *testing.T) {
 	testNodes, wg := oncetree.StartTestNodes(false)
+	time.Sleep(consts.RPCContextTimeout)
 
 	gorumsProvider := gorumsprovider.New(logger)
 	cfg, _ := storageConfig(gorumsProvider)
 
-	for _, node := range cfg.Nodes() {
-		_, writeErr := node.Write(context.Background(), &kvsprotos.WriteRequest{
-			Key:   20,
-			Value: 10,
+	writtenValues := writeRandomValuesToNodes(cfg, 1000)
+	keys := keysFromValueMap(writtenValues)
+
+	time.Sleep(consts.RPCContextTimeout * 3)
+
+	for _, key := range keys.Values() {
+		ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
+		responses, err := cfg.ReadAll(ctx, &kvsprotos.ReadRequest{
+			Key: key,
 		})
-		assert.Nil(t, writeErr)
-	}
-	time.Sleep(consts.RPCContextTimeout)
-
-	responses, readErr := cfg.ReadAll(context.Background(), &kvsprotos.ReadRequest{
-		Key: 20,
-	})
-
-	assert.Nil(t, readErr)
-	// should be as many responses as number of nodes
-	assert.Equal(t, len(testNodes), len(responses.GetValue()))
-	for _, response := range responses.GetValue() {
-		assert.Equal(t, int64(100), response)
+		cancel()
+		assert.Nil(t, err)
+		assert.Equal(t, len(testNodes), len(responses.GetValue()))
+		shouldBe := aggValueForKey(key, writtenValues)
+		for _, actual := range responses.GetValue() {
+			assert.Equal(t, shouldBe, actual)
+		}
 	}
 
 	for _, node := range testNodes {
@@ -145,51 +228,57 @@ func TestStorageService_Write(t *testing.T) {
 	wg.Wait()
 }
 
-// TestStorageService_WriteLocal tests writing a value to a node, and checking that the LOCAL values has propagated to the required nodes.
+// TestStorageService_WriteLocal tests writing random values to all nodes, and checking that the LOCAL values has propagated to the required nodes.
+/*
+				0
+               / \
+              1   2
+            / |   | \
+           3  4   5  6
+         / |   \
+		7  8    9
+*/
 func TestStorageService_WriteLocal(t *testing.T) {
-	shouldHaveValue := []uint32{1, 2}
-	shouldNotHaveValue := []uint32{0, 3, 4, 5, 6, 7, 8, 9}
+	shouldHaveValue := []uint32{0, 5, 6}
+	shouldNotHaveValue := []uint32{1, 2, 3, 4, 7, 8, 9}
 
 	testNodes, wg := oncetree.StartTestNodes(false)
+	time.Sleep(consts.RPCContextTimeout)
 	gorumsProvider := gorumsprovider.New(logger)
-	cfg, _ := storageConfig(gorumsProvider)
+	storageCfg, _ := storageConfig(gorumsProvider)
 
-	node0, exits := cfg.Node(0)
-	assert.True(t, exits)
+	writtenValues := writeRandomValuesToNodes(storageCfg, 1000)
+	nodes := []string{"2"}
+	keys := keysFromValueMapForNodes(nodes, writtenValues)
 
-	_, writeErr := node0.Write(context.Background(), &kvsprotos.WriteRequest{
-		Key:   25,
-		Value: 10,
-	})
-	assert.Nil(t, writeErr)
 	time.Sleep(consts.RPCContextTimeout)
 
-	// nodes 1 and 2 should have local value from 0
-	for _, gorumsID := range shouldHaveValue {
-		node, _ := cfg.Node(gorumsID)
-		response, err := node.ReadLocal(
-			context.Background(),
-			&kvsprotos.ReadLocalRequest{
-				Key:    25,
-				NodeID: fmt.Sprintf("%d", 0),
-			},
-		)
-		assert.Nil(t, err)
-		assert.Equal(t, int64(10), response.GetValue())
-	}
+	for _, key := range keys.Values() {
+		for _, id := range shouldNotHaveValue {
+			node, exists := storageCfg.Node(id)
+			assert.True(t, exists)
+			ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
+			response, err := node.ReadLocal(ctx, &kvsprotos.ReadLocalRequest{
+				Key:    key,
+				NodeID: "2",
+			})
+			cancel()
+			assert.NotNil(t, err)
+			assert.Equal(t, int64(0), response.GetValue())
+		}
 
-	// nodes 0 and 3-9 should not have local value stored from 0
-	for _, gorumsID := range shouldNotHaveValue {
-		node, _ := cfg.Node(gorumsID)
-		response, err := node.ReadLocal(
-			context.Background(),
-			&kvsprotos.ReadLocalRequest{
-				Key:    25,
-				NodeID: fmt.Sprintf("%d", 0),
-			},
-		)
-		assert.NotNil(t, err)
-		assert.Equal(t, int64(0), response.GetValue())
+		for _, id := range shouldHaveValue {
+			node, exists := storageCfg.Node(id)
+			assert.True(t, exists)
+			ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
+			response, err := node.ReadLocal(ctx, &kvsprotos.ReadLocalRequest{
+				Key:    key,
+				NodeID: "2",
+			})
+			cancel()
+			assert.Nil(t, err)
+			assert.Equal(t, nodesValueForKey(key, nodes, writtenValues), response.GetValue())
+		}
 	}
 
 	for _, node := range testNodes {
@@ -200,59 +289,76 @@ func TestStorageService_WriteLocal(t *testing.T) {
 
 // TestStorageService_RecoverValue crashes a node, then checks if the values are inherited by its parent
 // and distributed as a local value to its group
+/*
+				0
+               / \
+              1   2
+            / |   | \
+           3  4   5  6
+         / |   \
+		7  8    9
+*/
+// Will be converted to:
+/*
+				 0
+               / | \
+              1  5  6
+            / |
+           3  4
+         / |   \
+		7  8    9
+*/
 func TestStorageService_RecoverValues(t *testing.T) {
 	shouldHaveValue := []uint32{1, 5, 6}
 	shouldNotHaveValue := []uint32{0, 3, 4, 7, 8, 9}
 
 	testNodes, wg := oncetree.StartTestNodes(false)
+	time.Sleep(consts.RPCContextTimeout)
 	gorumsProvider := gorumsprovider.New(logger)
 	storageCfg, _ := storageConfig(gorumsProvider)
 	nodeCfg, _ := nodeConfig(gorumsProvider)
 
-	storageNode2, exists := storageCfg.Node(2)
-	assert.True(t, exists)
+	valuesWritten := writeRandomValuesToNodes(storageCfg, 1000)
+	joinedNodes := []string{"0", "2"}
+	keys := keysFromValueMapForNodes(joinedNodes, valuesWritten)
 
-	ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
-	_, writeErr := storageNode2.Write(ctx, &kvsprotos.WriteRequest{
-		Key:   25,
-		Value: 10,
-	})
-	cancel()
-	assert.Nil(t, writeErr)
-	time.Sleep(consts.RPCContextTimeout)
+	time.Sleep(consts.RPCContextTimeout * 2)
 
 	// crash node 2
 	node2, exists := nodeCfg.Node(2)
-	ctx, cancel = context.WithTimeout(context.Background(), consts.RPCContextTimeout)
+	assert.True(t, exists)
+	ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
 	_, err := node2.Crash(ctx, &emptypb.Empty{})
 	cancel()
 	assert.Nil(t, err)
 	time.Sleep(consts.FailureDetectionInterval * 3)
 
-	for _, id := range shouldNotHaveValue {
-		node, exists := storageCfg.Node(id)
-		assert.True(t, exists)
-		ctx, cancel = context.WithTimeout(context.Background(), consts.RPCContextTimeout)
-		response, err := node.ReadLocal(ctx, &kvsprotos.ReadLocalRequest{
-			Key:    25,
-			NodeID: "0",
-		})
-		cancel()
-		assert.NotNil(t, err)
-		assert.Equal(t, int64(0), response.GetValue())
-	}
+	for _, key := range keys.Values() {
+		for _, id := range shouldNotHaveValue {
+			node, exists := storageCfg.Node(id)
+			assert.True(t, exists)
+			ctx, cancel = context.WithTimeout(context.Background(), consts.RPCContextTimeout)
+			response, err := node.ReadLocal(ctx, &kvsprotos.ReadLocalRequest{
+				Key:    key,
+				NodeID: "0",
+			})
+			cancel()
+			assert.NotNil(t, err)
+			assert.Equal(t, int64(0), response.GetValue())
+		}
 
-	for _, id := range shouldHaveValue {
-		node, exists := storageCfg.Node(id)
-		assert.True(t, exists)
-		ctx, cancel = context.WithTimeout(context.Background(), consts.RPCContextTimeout)
-		response, err := node.ReadLocal(ctx, &kvsprotos.ReadLocalRequest{
-			Key:    25,
-			NodeID: "0",
-		})
-		cancel()
-		assert.Nil(t, err)
-		assert.Equal(t, int64(10), response.GetValue())
+		for _, id := range shouldHaveValue {
+			node, exists := storageCfg.Node(id)
+			assert.True(t, exists)
+			ctx, cancel = context.WithTimeout(context.Background(), consts.RPCContextTimeout)
+			response, err := node.ReadLocal(ctx, &kvsprotos.ReadLocalRequest{
+				Key:    key,
+				NodeID: "0",
+			})
+			cancel()
+			assert.Nil(t, err)
+			assert.Equal(t, nodesValueForKey(key, joinedNodes, valuesWritten), response.GetValue())
+		}
 	}
 
 	for _, node := range testNodes {
@@ -263,6 +369,7 @@ func TestStorageService_RecoverValues(t *testing.T) {
 
 func BenchmarkStorageService_Write(t *testing.B) {
 	testNodes, wg := oncetree.StartTestNodes(true)
+	time.Sleep(consts.RPCContextTimeout)
 	logger.Info("starting write")
 	gorumsProvider := gorumsprovider.New(logger)
 	cfg, _ := storageConfig(gorumsProvider)

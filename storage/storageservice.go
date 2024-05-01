@@ -65,6 +65,7 @@ func (ss *StorageService) SendPrepare(event nmevents.TreeRecoveredEvent) {
 			ss.logger.Info("storage does not contain value",
 				slog.Int64("key", key))
 			continue
+			// TODO, might need to actually send message here
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
 		response, err := cfg.Prepare(ctx, &kvsprotos.PrepareMessage{
@@ -116,12 +117,14 @@ func (ss *StorageService) SendAccept(failedNodeID string) {
 			localValue = TimestampedValue{Value: 0, Timestamp: 0}
 		}
 		oldLocal, ok := ss.storage.ReadLocalValue(key, failedNodeID)
-		if !ok {
-			ss.logger.Info("failed node does not store value for key",
+		if !ok && (readValueErr != nil) {
+			ss.logger.Info("failed node and self does not store value for key",
 				slog.String("id", failedNodeID),
 				slog.Int64("key", key))
 			ss.timestamp.Unlock(&ts)
 			continue
+		} else if !ok {
+			oldLocal = TimestampedValue{Value: 0, Timestamp: 0}
 		}
 		newLocalValue := oldLocal.Value + localValue.Value
 
