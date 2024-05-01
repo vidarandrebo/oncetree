@@ -65,6 +65,7 @@ func (ss *StorageService) SendPrepare(event nmevents.TreeRecoveredEvent) {
 			ss.logger.Info("storage does not contain value",
 				slog.Int64("key", key))
 			continue
+			// TODO, might need to actually send message here
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
 		response, err := cfg.Prepare(ctx, &kvsprotos.PrepareMessage{
@@ -116,12 +117,14 @@ func (ss *StorageService) SendAccept(failedNodeID string) {
 			localValue = TimestampedValue{Value: 0, Timestamp: 0}
 		}
 		oldLocal, ok := ss.storage.ReadLocalValue(key, failedNodeID)
-		if !ok {
-			ss.logger.Info("failed node does not store value for key",
+		if !ok && (readValueErr != nil) {
+			ss.logger.Info("failed node and self does not store value for key",
 				slog.String("id", failedNodeID),
 				slog.Int64("key", key))
 			ss.timestamp.Unlock(&ts)
 			continue
+		} else if !ok {
+			oldLocal = TimestampedValue{Value: 0, Timestamp: 0}
 		}
 		newLocalValue := oldLocal.Value + localValue.Value
 
@@ -132,7 +135,7 @@ func (ss *StorageService) SendAccept(failedNodeID string) {
 				slog.Int64("key", key))
 		}
 		ss.storage.DeleteAgg(key, failedNodeID)
-		ss.storage.DeleteLocal(key, ss.id)
+		ss.storage.DeleteLocal(key, failedNodeID)
 
 		// does not user storage.ReadLocalValue, since the aggregated value IS the local value in this case, and self's local value cannot be found using ReadLocalValue
 		// both the write and read must happen while ts mutex is locked to avoid inconsistencies

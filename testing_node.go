@@ -1,8 +1,10 @@
 package oncetree
 
 import (
+	"github.com/vidarandrebo/oncetree/consts"
 	"io"
 	"sync"
+	"time"
 )
 
 func StartTestNodes(discardLogs bool) (map[string]*Node, *sync.WaitGroup) {
@@ -37,14 +39,12 @@ func StartTestNodes(discardLogs bool) (map[string]*Node, *sync.WaitGroup) {
 			mut.Lock()
 			node := nodes[id]
 			mut.Unlock()
-			node.Run("", readyWg.Done)
+			node.Run(GetParentFromNodeMap(id, nodeIDs, nodeMap), readyWg.Done)
 			wg.Done()
 		}()
-		mut.Lock()
-		go nodes[id].SetNeighboursFromNodeMap(nodeIDs, nodeMap)
-		mut.Unlock()
 	}
 	readyWg.Wait()
+	time.Sleep(consts.StartupDelay)
 	return nodes, &wg
 }
 
@@ -59,5 +59,21 @@ func StartTestNode(discardLogs bool) (*Node, *sync.WaitGroup) {
 		node.Run(":9080", readyWg.Done)
 		wg.Done()
 	}()
+	time.Sleep(consts.StartupDelay)
 	return node, &wg
+}
+
+// GetParentFromNodeMap assumes a binary tree as slice where a nodes children are at index 2i+1 and 2i+2
+// Uses both a slice and a maps to ensure consistent iteration order
+func GetParentFromNodeMap(id string, nodeIDs []string, nodes map[string]string) string {
+	for i, nodeID := range nodeIDs {
+		// find n as a child of current node -> current node is n's parent
+		if len(nodeIDs) > (2*i+1) && nodeIDs[2*i+1] == id {
+			return nodes[nodeID]
+		}
+		if len(nodeIDs) > (2*i+2) && nodeIDs[2*i+2] == id {
+			return nodes[nodeID]
+		}
+	}
+	return ""
 }

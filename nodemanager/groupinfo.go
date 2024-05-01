@@ -35,7 +35,7 @@ func (nm *NodeManager) GroupInfo(ctx gorums.ServerCtx, request *nmprotos.GroupIn
 	}
 	node.Group.epoch = request.GetEpoch()
 	node.Group.members = newMembers
-	nm.logger.Debug("group updated",
+	nm.logger.Info("group updated",
 		slog.String("id", request.GetGroupID()),
 		slog.String("group", node.Group.String()))
 }
