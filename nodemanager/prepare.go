@@ -1,6 +1,7 @@
 package nodemanager
 
 import (
+	"fmt"
 	"log/slog"
 	"slices"
 	"sort"
@@ -12,7 +13,8 @@ import (
 
 func (nm *NodeManager) Prepare(ctx gorums.ServerCtx, request *nmprotos.PrepareMessage) (*nmprotos.PromiseMessage, error) {
 	nm.logger.Info("Prepare RPC",
-		"id", request.NodeID)
+		slog.String("groupID", request.GetGroupID()),
+		slog.String("fromID", request.GetNodeID()))
 	node, ok := nm.Neighbour(request.GetGroupID())
 	if !ok {
 		// this could mean a delayed prepare message from one of the nodes.
@@ -20,7 +22,7 @@ func (nm *NodeManager) Prepare(ctx gorums.ServerCtx, request *nmprotos.PrepareMe
 	}
 
 	if node.Group.epoch != request.Epoch {
-		panic("node's group info is not up to date, unrecoverable")
+		panic(fmt.Sprintf("node's group info is not up to date, unrecoverable stored: %d, request: %d", node.Group.epoch, request.GetEpoch()))
 	}
 	nm.recoveryProcess.mut.Lock()
 	defer nm.recoveryProcess.mut.Unlock()

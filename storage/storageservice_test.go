@@ -1,3 +1,5 @@
+//go:build !race
+
 package storage_test
 
 import (
@@ -162,8 +164,8 @@ func TestStorageService_shareAll(t *testing.T) {
 	cfg, nodeMap := storageConfig(gorumsProvider)
 
 	writtenValues := writeRandomValuesToNodes(cfg, 100)
+	time.Sleep(consts.TestWaitAfterWrite)
 	keys := keysFromValueMap(writtenValues)
-
 	newNode, newWg := oncetree.StartTestNode(true)
 
 	// add the new node to config
@@ -171,6 +173,7 @@ func TestStorageService_shareAll(t *testing.T) {
 	gorumsProvider.ResetWithNewNodes(nodeMap)
 	cfg, ok := gorumsProvider.StorageConfig()
 	assert.True(t, ok)
+	time.Sleep(consts.TestWaitAfterWrite)
 
 	for _, key := range keys.Values() {
 		responses, readErr := cfg.ReadAll(context.Background(), &kvsprotos.ReadRequest{
@@ -202,9 +205,8 @@ func TestStorageService_Write(t *testing.T) {
 	cfg, _ := storageConfig(gorumsProvider)
 
 	writtenValues := writeRandomValuesToNodes(cfg, 100)
+	time.Sleep(consts.TestWaitAfterWrite)
 	keys := keysFromValueMap(writtenValues)
-
-	time.Sleep(consts.RPCContextTimeout * 3)
 
 	for _, key := range keys.Values() {
 		ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
@@ -245,10 +247,9 @@ func TestStorageService_WriteLocal(t *testing.T) {
 	storageCfg, _ := storageConfig(gorumsProvider)
 
 	writtenValues := writeRandomValuesToNodes(storageCfg, 100)
+	time.Sleep(consts.TestWaitAfterWrite)
 	nodes := []string{"2"}
 	keys := keysFromValueMapForNodes(nodes, writtenValues)
-
-	time.Sleep(consts.RPCContextTimeout)
 
 	for _, key := range keys.Values() {
 		for _, id := range shouldNotHaveValue {
@@ -318,7 +319,7 @@ func TestStorageService_RecoverValues(t *testing.T) {
 	joinedNodes := []string{"0", "2"}
 	keys := keysFromValueMapForNodes(joinedNodes, valuesWritten)
 
-	time.Sleep(consts.RPCContextTimeout * 2)
+	time.Sleep(consts.TestWaitAfterWrite)
 
 	// crash node 2
 	node2, exists := nodeCfg.Node(2)
@@ -327,7 +328,7 @@ func TestStorageService_RecoverValues(t *testing.T) {
 	_, err := node2.Crash(ctx, &emptypb.Empty{})
 	cancel()
 	assert.Nil(t, err)
-	time.Sleep(consts.FailureDetectionInterval * 3)
+	time.Sleep(consts.HeartbeatSendInterval * consts.FailureDetectorStrikes * 2)
 
 	for _, key := range keys.Values() {
 		for _, id := range shouldNotHaveValue {

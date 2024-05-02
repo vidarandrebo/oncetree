@@ -1,3 +1,8 @@
+networks:
+  benchmark-network:
+    ipam:
+      config:
+        - subnet: "172.16.40.0/24"
 services:
   client:
     build:
@@ -5,9 +10,33 @@ services:
       dockerfile: client.Dockerfile
     image: benchmarkclient
     tty: true
-  replica:
+
+  first-replica:
     build:
       context: ./
       dockerfile: replica.Dockerfile
     image: benchmarkreplica
     tty: true
+    networks:
+      benchmark-network:
+        ipv4_address: "172.16.40.2"
+    volumes:
+      - /var/log/oncetree:/app/logs/
+
+  replica:
+    depends_on:
+      - first-replica
+    build:
+      context: ./
+      dockerfile: replica.Dockerfile
+    entrypoint: ./replica
+    command: --knownAddr first-replica:8080
+    image: benchmarkreplica
+    tty: true
+    networks:
+      benchmark-network:
+    deploy:
+      mode: replicated
+      replicas: 14
+    volumes:
+      - /var/log/oncetree:/app/logs/

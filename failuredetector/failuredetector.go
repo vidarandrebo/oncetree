@@ -27,19 +27,20 @@ import (
 type FailureDetector struct {
 	id             string
 	nodes          *hashset.ConcurrentHashSet[string]
-	alive          *maps.ConcurrentIntegerMap[string]
+	strikes        *maps.ConcurrentIntegerMap[string]
 	suspected      *hashset.ConcurrentHashSet[string]
 	logger         *slog.Logger
 	nodeManager    *nodemanager.NodeManager
 	eventBus       *eventbus.EventBus
 	configProvider gorumsprovider.FDConfigProvider
+	mut            sync.Mutex
 }
 
 func New(id string, logger *slog.Logger, nodeManager *nodemanager.NodeManager, eventBus *eventbus.EventBus, configProvider gorumsprovider.FDConfigProvider) *FailureDetector {
 	fd := &FailureDetector{
 		id:             id,
 		nodes:          hashset.New[string](),
-		alive:          maps.NewConcurrentIntegerMap[string](),
+		strikes:        maps.NewConcurrentIntegerMap[string](),
 		suspected:      hashset.New[string](),
 		nodeManager:    nodeManager,
 		eventBus:       eventBus,
@@ -59,21 +60,16 @@ func New(id string, logger *slog.Logger, nodeManager *nodemanager.NodeManager, e
 }
 
 func (fd *FailureDetector) SetNodesFromManager() {
+	fd.mut.Lock()
+	defer fd.mut.Unlock()
 	fd.nodes.Clear()
 	fd.suspected.Clear()
-	fd.alive.Clear()
+	fd.strikes.Clear()
 	for _, neighbour := range fd.nodeManager.Neighbours() {
 		if (neighbour.Value.Role == nmenums.Parent) || (neighbour.Value.Role == nmenums.Child) {
-			fd.alive.Increment(neighbour.Key, 1)
 			fd.nodes.Add(neighbour.Key)
 		}
 	}
-}
-
-func (fd *FailureDetector) DeregisterNode(nodeID string) {
-	fd.nodes.Delete(nodeID)
-	fd.alive.Delete(nodeID)
-	fd.suspected.Delete(nodeID)
 }
 
 func (fd *FailureDetector) Suspect(nodeID string) {
@@ -81,21 +77,14 @@ func (fd *FailureDetector) Suspect(nodeID string) {
 }
 
 func (fd *FailureDetector) Run(ctx context.Context, wg *sync.WaitGroup) {
-	heartbeatTimeout := time.After(consts.FailureDetectionInterval)
-	heartbeatTick := time.Tick(consts.HeartbeatSendInterval)
-
 mainLoop:
 	for {
 		select {
-		case <-heartbeatTimeout:
+		case <-time.After(consts.HeartbeatSendInterval):
+			go fd.sendHeartbeat()
 			fd.timeout()
-			// timeout operations should not be queued,
-			// so therefore the time.After is reset instead of using ticker
-			heartbeatTimeout = time.After(consts.FailureDetectionInterval)
 		case <-ctx.Done():
 			break mainLoop
-		case <-heartbeatTick:
-			fd.sendHeartbeat()
 		}
 	}
 	fd.logger.Debug("break loop")
@@ -103,28 +92,36 @@ mainLoop:
 }
 
 func (fd *FailureDetector) timeout() {
-	fd.logger.Debug("timeout")
-	for _, nodeID := range fd.nodes.Values() {
-		if !fd.alive.Contains(nodeID) && !fd.suspected.Contains(nodeID) {
-			fd.suspected.Add(nodeID)
-			fd.logger.Warn(
-				"suspect",
-				slog.String("node", nodeID))
-			fd.Suspect(nodeID)
+	fd.mut.Lock()
+	defer fd.mut.Unlock()
+	for _, node := range fd.nodes.Values() {
+		fd.strikes.Increment(node, 1)
+	}
+	for _, strike := range fd.strikes.Entries() {
+		if strike.Value > consts.FailureDetectorStrikes && !fd.suspected.Contains(strike.Key) {
+			fd.suspected.Add(strike.Key)
+			fd.Suspect(strike.Key)
 		}
 	}
-
-	fd.alive.Clear()
 }
 
 func (fd *FailureDetector) sendHeartbeat() {
-	fd.logger.Debug("send heartbeat")
 	gorumsConfig, ok := fd.configProvider.FailureDetectorConfig()
 	if !ok {
 		fd.logger.Error("failed to retrieve config",
 			"fn", "fd.sendHeartbeat")
 		return
 	}
+	nodeIDs := make([]string, 0)
+	for _, gorumsID := range gorumsConfig.NodeIDs() {
+		id, ok := fd.nodeManager.NodeID(gorumsID)
+		if !ok {
+			panic("jh")
+		}
+		nodeIDs = append(nodeIDs, id)
+	}
+	fd.logger.Debug("sending heartbeat",
+		slog.Any("nodeIDs", nodeIDs))
 	msg := fdprotos.HeartbeatMessage{NodeID: fd.id}
 	ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
 	defer cancel()

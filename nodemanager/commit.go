@@ -28,7 +28,7 @@ func (nm *NodeManager) Commit(ctx gorums.ServerCtx, request *nmprotos.CommitMess
 	newGorumsNeighbourMap := nm.GorumsNeighbourMap()
 	nm.gorumsProvider.ResetWithNewNodes(newGorumsNeighbourMap)
 
-	nm.eventBus.PushEvent(nmevents.NewNeighbourAddedEvent(newParentID, nmenums.Parent))
+	nm.eventBus.PushEvent(nmevents.NewNeighbourAddedEvent(newParentID, "commit", nmenums.Parent))
 	nm.recoveryProcess.stop()
 	nm.eventBus.PushTask(nm.SendGroupInfo)
 }

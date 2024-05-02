@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"reflect"
+	"strings"
 	"sync"
 
 	"github.com/google/uuid"
@@ -57,6 +58,14 @@ func NewNode(id string, rpcAddr string, logFile io.Writer) *Node {
 	nodeManager := nodemanager.New(id, rpcAddr, logger, eventBus, gorumsProvider)
 	failureDetector := failuredetector.New(id, logger, nodeManager, eventBus, gorumsProvider)
 	storageService := storage.NewStorageService(id, logger, nodeManager, eventBus, gorumsProvider)
+	ips, err := net.LookupIP(strings.Split(rpcAddr, ":")[0])
+	if err == nil {
+		for _, ip := range ips {
+			logger.Info(ip.String())
+		}
+	} else {
+		logger.Error("failed to lookup ips")
+	}
 
 	return &Node{
 		rpcAddr:         rpcAddr,
@@ -160,7 +169,7 @@ func (n *Node) Stop(msg string) {
 }
 
 func (n *Node) Crash(ctx gorums.ServerCtx, request *emptypb.Empty) (response *emptypb.Empty, err error) {
-	n.logger.Debug("RPC Crash")
+	n.logger.Info("RPC Crash")
 	n.Stop("crash RPC")
 	return &emptypb.Empty{}, nil
 }

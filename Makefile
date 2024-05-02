@@ -11,9 +11,10 @@ build: protos logs
 
 test:
 	go test ./... -race
+	go test ./...
 
 logs:
-	-mkdir logs
+	mkdir -p logs
 
 bench:
 	go test -run=None ./... -bench=. -benchmem -benchtime=20s
