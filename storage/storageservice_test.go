@@ -364,6 +364,7 @@ func TestStorageService_RecoverValues(t *testing.T) {
 }
 
 func BenchmarkStorageService_Write(t *testing.B) {
+	// runtime.GOMAXPROCS(2)
 	testNodes, wg := oncetree.StartTestNodes(true)
 	logger.Info("starting write")
 	gorumsProvider := gorumsprovider.New(logger)

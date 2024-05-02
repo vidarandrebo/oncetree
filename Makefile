@@ -6,7 +6,7 @@ gorums_go := $(proto_src:%.proto=%_gorums.pb.go)
 
 
 build: protos logs
-	go build -o bin/oncetreenode cmd/oncetreenode/main.go
+	go build -o bin/oncetreenodes cmd/oncetreenodes/main.go
 	go build -o bin/oncetreeclient cmd/oncetreeclient/main.go
 
 test:
@@ -23,6 +23,7 @@ format:
 
 clean:
 	rm -rf bin/
+	rm -rf logs
 	find protos/ -name "*pb.go" -type f | xargs rm
 	go clean -cache -testcache
 

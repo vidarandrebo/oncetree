@@ -1,10 +1,11 @@
 package oncetree
 
 import (
-	"github.com/vidarandrebo/oncetree/consts"
 	"io"
 	"sync"
 	"time"
+
+	"github.com/vidarandrebo/oncetree/consts"
 )
 
 func StartTestNodes(discardLogs bool) (map[string]*Node, *sync.WaitGroup) {
