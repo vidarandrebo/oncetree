@@ -5,5 +5,4 @@ WORKDIR /app
 COPY . .
 RUN go build -o client cmd/benchmarkclient/main.go
 RUN mkdir -p logs
-EXPOSE 8080
 CMD ["./client"]

@@ -2,6 +2,7 @@ package oncetree
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -20,7 +21,7 @@ import (
 	"github.com/vidarandrebo/oncetree/nodemanager"
 	fdprotos "github.com/vidarandrebo/oncetree/protos/failuredetector"
 	kvsprotos "github.com/vidarandrebo/oncetree/protos/keyvaluestorage"
-	"github.com/vidarandrebo/oncetree/protos/node"
+	nodeprotos "github.com/vidarandrebo/oncetree/protos/node"
 	nmprotos "github.com/vidarandrebo/oncetree/protos/nodemanager"
 	"github.com/vidarandrebo/oncetree/storage"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -101,7 +102,7 @@ func (n *Node) startGorumsServer(addr string) {
 	fdprotos.RegisterFailureDetectorServiceServer(n.gorumsServer, n.failureDetector)
 	kvsprotos.RegisterKeyValueStorageServer(n.gorumsServer, n.storageService)
 	nmprotos.RegisterNodeManagerServiceServer(n.gorumsServer, n.nodeManager)
-	node.RegisterNodeServiceServer(n.gorumsServer, n)
+	nodeprotos.RegisterNodeServiceServer(n.gorumsServer, n)
 
 	listener, listenErr := net.Listen("tcp", addr)
 	if listenErr != nil {
@@ -172,4 +173,32 @@ func (n *Node) Crash(ctx gorums.ServerCtx, request *emptypb.Empty) (response *em
 	n.logger.Info("RPC Crash")
 	n.Stop("crash RPC")
 	return &emptypb.Empty{}, nil
+}
+
+func (n *Node) Nodes(ctx gorums.ServerCtx, request *nodeprotos.NodesRequest) (*nodeprotos.NodesResponse, error) {
+	nodeMap := make(map[string]string)
+	nodeMap[n.id] = n.rpcAddr
+	neighbours := n.nodeManager.Neighbours()
+	cfg, ok := n.nodeManager.NodeConfig()
+	if !ok {
+		return nil, fmt.Errorf("node config not found")
+	}
+	for _, neighbour := range neighbours {
+		if neighbour.Key == request.Origin {
+			continue
+		}
+		gorumsNode, ok := cfg.Node(neighbour.Value.GorumsID)
+		if !ok {
+			return nil, fmt.Errorf("neighbour %s not found in node config", neighbour.Value)
+		}
+		response, err := gorumsNode.Nodes(ctx, &nodeprotos.NodesRequest{Origin: n.id})
+		if err != nil {
+			return nil, err
+		}
+		for id, address := range response.GetNodeMap() {
+			nodeMap[id] = address
+		}
+	}
+	response := nodeprotos.NodesResponse{NodeMap: nodeMap}
+	return &response, nil
 }

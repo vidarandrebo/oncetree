@@ -9,6 +9,8 @@ import (
 	"slices"
 	"sync"
 
+	nodeprotos "github.com/vidarandrebo/oncetree/protos/node"
+
 	"github.com/vidarandrebo/oncetree/concurrent/hashset"
 	"github.com/vidarandrebo/oncetree/failuredetector/fdevents"
 	"github.com/vidarandrebo/oncetree/nodemanager/nmenums"
@@ -520,4 +522,8 @@ func (nm *NodeManager) NextJoinID() string {
 	// increment last join path, then return
 	*lastJoinID = children[lastJoinPathIndex+1].ID
 	return *lastJoinID
+}
+
+func (nm *NodeManager) NodeConfig() (*nodeprotos.Configuration, bool) {
+	return nm.gorumsProvider.NodeConfig()
 }

@@ -170,9 +170,25 @@ func (n *Node) Crash(ctx context.Context, in *emptypb.Empty) (resp *emptypb.Empt
 	return res.(*emptypb.Empty), err
 }
 
+// Nodes is a quorum call invoked on all nodes in configuration c,
+// with the same argument in, and returns a combined result.
+func (n *Node) Nodes(ctx context.Context, in *NodesRequest) (resp *NodesResponse, err error) {
+	cd := gorums.CallData{
+		Message: in,
+		Method:  "node.NodeService.Nodes",
+	}
+
+	res, err := n.RawNode.RPCCall(ctx, cd)
+	if err != nil {
+		return nil, err
+	}
+	return res.(*NodesResponse), err
+}
+
 // NodeService is the server-side API for the NodeService Service
 type NodeService interface {
 	Crash(ctx gorums.ServerCtx, request *emptypb.Empty) (response *emptypb.Empty, err error)
+	Nodes(ctx gorums.ServerCtx, request *NodesRequest) (response *NodesResponse, err error)
 }
 
 func RegisterNodeServiceServer(srv *gorums.Server, impl NodeService) {
@@ -180,6 +196,12 @@ func RegisterNodeServiceServer(srv *gorums.Server, impl NodeService) {
 		req := in.Message.(*emptypb.Empty)
 		defer ctx.Release()
 		resp, err := impl.Crash(ctx, req)
+		gorums.SendMessage(ctx, finished, gorums.WrapMessage(in.Metadata, resp, err))
+	})
+	srv.RegisterHandler("node.NodeService.Nodes", func(ctx gorums.ServerCtx, in *gorums.Message, finished chan<- *gorums.Message) {
+		req := in.Message.(*NodesRequest)
+		defer ctx.Release()
+		resp, err := impl.Nodes(ctx, req)
 		gorums.SendMessage(ctx, finished, gorums.WrapMessage(in.Metadata, resp, err))
 	})
 }

@@ -5,13 +5,23 @@ networks:
         - subnet: "172.16.40.0/24"
 services:
   client:
+    depends_on:
+      - genesis
+      - replica
     build:
       context: ./
       dockerfile: client.Dockerfile
+    entrypoint: ./client
+    command: --knownAddr genesis:8080
     image: benchmarkclient
     tty: true
+    networks:
+      benchmark-network:
+    deploy:
+      mode: replicated
+      replicas: 20
 
-  first-replica:
+  genesis:
     build:
       context: ./
       dockerfile: replica.Dockerfile
@@ -25,12 +35,12 @@ services:
 
   replica:
     depends_on:
-      - first-replica
+      - genesis
     build:
       context: ./
       dockerfile: replica.Dockerfile
     entrypoint: ./replica
-    command: --knownAddr first-replica:8080
+    command: --knownAddr genesis:8080
     image: benchmarkreplica
     tty: true
     networks:
