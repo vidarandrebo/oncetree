@@ -15,7 +15,8 @@ message JoinRequest {
 message JoinResponse {
     bool OK = 1;
     string NodeID = 2;
-    string NextAddress = 3;
+    string Address = 3;
+    string NextAddress = 4;
 }
 
 message ReadyMessage {

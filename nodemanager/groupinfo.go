@@ -9,7 +9,8 @@ import (
 )
 
 func (nm *NodeManager) GroupInfo(ctx gorums.ServerCtx, request *nmprotos.GroupInfoMessage) {
-	// message arrive one by one from same client in gorums, so should not need to lock for epoch compare
+	nm.groupMut.Lock()
+	defer nm.groupMut.Unlock()
 	node, ok := nm.neighbours.Get(request.GetGroupID())
 
 	// Group exists and is up to date

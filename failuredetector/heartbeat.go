@@ -12,7 +12,7 @@ func (fd *FailureDetector) Heartbeat(ctx gorums.ServerCtx, request *fdprotos.Hea
 		"RPC Heartbeat",
 		slog.String("id", request.GetNodeID()),
 	)
-	fd.alive.Increment(request.GetNodeID(), 1)
+	fd.strikes.Set(request.GetNodeID(), 0)
 	if fd.suspected.Contains(request.GetNodeID()) {
 		fd.logger.Error("received heartbeat from suspected node", slog.String("id", request.GetNodeID()))
 		panic("heartbeat problem")

@@ -16,6 +16,8 @@ type GorumsProvider struct {
 	configurations *configurations
 	mut            sync.RWMutex
 	logger         *slog.Logger
+	currentNodes   map[string]uint32
+	epoch          int
 }
 
 func New(logger *slog.Logger) *GorumsProvider {
@@ -24,6 +26,18 @@ func New(logger *slog.Logger) *GorumsProvider {
 		configurations: newConfigurations(),
 		logger:         logger.With(slog.Group("node", slog.String("module", "gorumsprovider"))),
 	}
+}
+
+func (gp *GorumsProvider) Reconnect(epoch int) {
+	gp.mut.Lock()
+	defer gp.mut.Unlock()
+	if epoch != gp.epoch {
+		return
+	}
+	gp.logger.Info("reconnection granted")
+	gp.reset()
+	gp.setNodes(gp.currentNodes)
+	gp.logger.Info("reconnection completed")
 }
 
 // SetNodes updates all configurations to contain the input nodes
@@ -71,6 +85,7 @@ func (gp *GorumsProvider) setNodes(nodes map[string]uint32) {
 	} else {
 		gp.logger.Debug("created failuredetector config")
 	}
+	gp.currentNodes = nodes
 }
 
 // Reset deletes existing manager and configs, then it creates new ones
@@ -83,6 +98,7 @@ func (gp *GorumsProvider) Reset() {
 func (gp *GorumsProvider) reset() {
 	gp.managers = gp.managers.recreate(gp.logger)
 	gp.configurations = newConfigurations()
+	gp.epoch++
 }
 
 // ResetWithNewNodes deletes existing manager and configs, then it creates new ones with the provided nodes
@@ -127,11 +143,11 @@ func (gp *GorumsProvider) NodeConfig() (*node.Configuration, bool) {
 	return gp.configurations.nodeConfig, true
 }
 
-func (gp *GorumsProvider) StorageConfig() (*kvsprotos.Configuration, bool) {
+func (gp *GorumsProvider) StorageConfig() (*kvsprotos.Configuration, bool, int) {
 	gp.mut.RLock()
 	defer gp.mut.RUnlock()
 	if gp.configurations.kvsConfig == nil {
-		return nil, false
+		return nil, false, 0
 	}
-	return gp.configurations.kvsConfig, true
+	return gp.configurations.kvsConfig, true, gp.epoch
 }

@@ -69,7 +69,7 @@ func (m *managers) closeManagers(logger *slog.Logger) {
 	m.nmManager.Close()
 	m.kvsManager.Close()
 	m.nodeManager.Close()
-	logger.Info("gorums manager's connections disposed")
+	logger.Debug("gorums manager's connections disposed")
 }
 
 func (m *managers) newFDConfig(nodes map[string]uint32) (*fdprotos.Configuration, error) {

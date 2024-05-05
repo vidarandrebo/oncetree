@@ -9,6 +9,8 @@ import (
 	"slices"
 	"sync"
 
+	nodeprotos "github.com/vidarandrebo/oncetree/protos/node"
+
 	"github.com/vidarandrebo/oncetree/concurrent/hashset"
 	"github.com/vidarandrebo/oncetree/failuredetector/fdevents"
 	"github.com/vidarandrebo/oncetree/nodemanager/nmenums"
@@ -37,6 +39,7 @@ type NodeManager struct {
 	recoveryProcess *RecoveryProcess
 	blackList       *hashset.ConcurrentHashSet[string]
 	joinMut         sync.Mutex
+	groupMut        sync.Mutex
 	logger          *slog.Logger
 	eventBus        *eventbus.EventBus
 	gorumsProvider  *gorumsprovider.GorumsProvider
@@ -56,12 +59,6 @@ func New(id string, address string, logger *slog.Logger, eventBus *eventbus.Even
 		eventBus:        eventBus,
 		gorumsProvider:  gorumsProvider,
 	}
-	eventBus.RegisterHandler(reflect.TypeOf(nmevents.NeighbourReadyEvent{}),
-		func(e any) {
-			if event, ok := e.(nmevents.NeighbourReadyEvent); ok {
-				nm.HandleNeighbourReadyEvent(event)
-			}
-		})
 	eventBus.RegisterHandler(reflect.TypeOf(nmevents.NeighbourAddedEvent{}),
 		func(e any) {
 			if event, ok := e.(nmevents.NeighbourAddedEvent); ok {
@@ -236,7 +233,7 @@ func (nm *NodeManager) SendCommit() {
 	nm.gorumsProvider.ResetWithNewNodes(newGorumsNeighbourMap)
 
 	for _, childID := range newChildren {
-		nm.eventBus.PushEvent(nmevents.NewNeighbourAddedEvent(childID, nmenums.Child))
+		nm.eventBus.PushEvent(nmevents.NewNeighbourAddedEvent(childID, "commit", nmenums.Child))
 	}
 	nm.blackList.Add(failedNode.ID)
 	nm.recoveryProcess.stop()
@@ -245,11 +242,10 @@ func (nm *NodeManager) SendCommit() {
 }
 
 func (nm *NodeManager) HandleNeighbourAddedEvent(e nmevents.NeighbourAddedEvent) {
-	nm.logger.Info("added neighbour", slog.String("id", e.NodeID), slog.Any("role", e.Role))
-}
-
-func (nm *NodeManager) HandleNeighbourReadyEvent(e nmevents.NeighbourReadyEvent) {
-	nm.SendGroupInfo()
+	nm.logger.Info("added neighbour",
+		slog.String("id", e.NodeID),
+		slog.String("address", e.Address),
+		slog.Any("role", e.Role))
 }
 
 func (nm *NodeManager) HandleNeighbourRemovedEvent(e nmevents.NeighbourRemovedEvent) {
@@ -316,7 +312,7 @@ func (nm *NodeManager) AddNeighbour(nodeID string, address string, role nmenums.
 	nm.neighbours.Set(nodeID, neighbour)
 	nm.gorumsProvider.SetNodes(nm.GorumsNeighbourMap())
 	if (role != nmenums.Tmp) && (role != nmenums.Recovery) {
-		nm.eventBus.PushEvent(nmevents.NewNeighbourAddedEvent(nodeID, role))
+		nm.eventBus.PushEvent(nmevents.NewNeighbourAddedEvent(nodeID, address, role))
 	}
 }
 
@@ -393,6 +389,8 @@ func (nm *NodeManager) Parent() *Neighbour {
 }
 
 func (nm *NodeManager) SendJoin(knownAddr string) {
+	nm.joinMut.Lock()
+	defer nm.joinMut.Unlock()
 	if knownAddr == "" {
 		return
 	}
@@ -426,8 +424,8 @@ func (nm *NodeManager) SendJoin(knownAddr string) {
 
 		if response.OK {
 			joined = true
-			nm.AddNeighbour(response.NodeID, knownAddr, nmenums.Parent)
-			nm.SendReady(response.NodeID)
+			nm.AddNeighbour(response.GetNodeID(), response.GetAddress(), nmenums.Parent)
+			nm.SendReady(response.GetNodeID())
 		} else {
 			knownAddr = response.NextAddress
 		}
@@ -469,6 +467,7 @@ func (nm *NodeManager) SendReady(nodeID string) {
 	if !ok {
 		nm.logger.Info("no nodes in config, skip sending Ready",
 			slog.String("fn", "nm.SendReady"))
+		panic("no nodes in config")
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
@@ -493,6 +492,7 @@ func (nm *NodeManager) SendReady(nodeID string) {
 		return
 	}
 	if response.GetOK() {
+		go nm.SendGroupInfo()
 		nm.eventBus.PushEvent(nmevents.NewNeighbourReadyEvent(nodeID))
 	}
 }
@@ -522,4 +522,8 @@ func (nm *NodeManager) NextJoinID() string {
 	// increment last join path, then return
 	*lastJoinID = children[lastJoinPathIndex+1].ID
 	return *lastJoinID
+}
+
+func (nm *NodeManager) NodeConfig() (*nodeprotos.Configuration, bool) {
+	return nm.gorumsProvider.NodeConfig()
 }

@@ -16,7 +16,7 @@ func (ss *StorageService) Gossip(ctx gorums.ServerCtx, request *kvsprotos.Gossip
 		slog.Int64("ts", request.GetAggTimestamp()),
 		slog.String("nodeID", request.GetNodeID()),
 	)
-	ctx.Release()
+	// ctx.Release()
 	ts := ss.timestamp.Lock()
 	*ts++
 	writeTs := *ts

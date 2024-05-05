@@ -1,10 +1,11 @@
 package oncetree
 
 import (
-	"github.com/vidarandrebo/oncetree/consts"
 	"io"
 	"sync"
 	"time"
+
+	"github.com/vidarandrebo/oncetree/consts"
 )
 
 func StartTestNodes(discardLogs bool) (map[string]*Node, *sync.WaitGroup) {
@@ -59,7 +60,7 @@ func StartTestNode(discardLogs bool) (*Node, *sync.WaitGroup) {
 		node.Run(":9080", readyWg.Done)
 		wg.Done()
 	}()
-	time.Sleep(consts.StartupDelay)
+	// time.Sleep(consts.StartupDelay)
 	return node, &wg
 }
 

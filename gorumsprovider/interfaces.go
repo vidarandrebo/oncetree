@@ -10,5 +10,6 @@ type FDConfigProvider interface {
 }
 
 type StorageConfigProvider interface {
-	StorageConfig() (*kvsprotos.Configuration, bool)
+	StorageConfig() (*kvsprotos.Configuration, bool, int)
+	Reconnect(epoch int)
 }

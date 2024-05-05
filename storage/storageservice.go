@@ -55,7 +55,7 @@ func NewStorageService(id string, logger *slog.Logger, nodeManager *nodemanager.
 
 func (ss *StorageService) SendPrepare(event nmevents.TreeRecoveredEvent) {
 	keySet := ss.storage.Keys()
-	cfg, ok := ss.configProvider.StorageConfig()
+	cfg, ok, _ := ss.configProvider.StorageConfig()
 	if !ok {
 		ss.logger.Error("failed to get storage-config")
 	}
@@ -101,7 +101,7 @@ func (ss *StorageService) SendAccept(failedNodeID string) {
 	ss.logger.Info("sending Accept messages",
 		slog.String("fn", "ss.SendAccept"))
 	keySet := ss.storage.Keys()
-	cfg, ok := ss.configProvider.StorageConfig()
+	cfg, ok, _ := ss.configProvider.StorageConfig()
 	if !ok {
 		ss.logger.Error("failed to get storage-config")
 	}
@@ -194,7 +194,7 @@ func (ss *StorageService) shareAll(nodeID string) {
 		ss.logger.Error("did not find neighbour", "id", nodeID)
 		return
 	}
-	gorumsConfig, configExists := ss.configProvider.StorageConfig()
+	gorumsConfig, configExists, _ := ss.configProvider.StorageConfig()
 	if !configExists {
 		ss.logger.Error("storageconfig does not exist",
 			slog.String("fn", "ss.shareAll"))
@@ -247,14 +247,30 @@ func (ss *StorageService) shareAll(nodeID string) {
 }
 
 func (ss *StorageService) sendGossip(originID string, key int64, values map[string]int64, ts int64, localValue TimestampedValue) {
-	ss.logger.Debug(
-		"sendGossip",
-		slog.String("originID", originID),
-		slog.Int64("key", key),
-		slog.Int64("ts", ts),
-	)
+	cfgEpoch := 0
+	retries := -1
+
+retry:
+	retries++
+	if retries < 1 {
+		ss.logger.Debug(
+			"sendGossip",
+			slog.String("originID", originID),
+			slog.Int64("key", key),
+			slog.Int64("ts", ts),
+		)
+	} else {
+		ss.configProvider.Reconnect(cfgEpoch)
+		ss.logger.Info(
+			"retrying sendGossip",
+			slog.String("originID", originID),
+			slog.Int64("key", key),
+			slog.Int("retries", retries),
+			slog.Int64("ts", ts),
+		)
+	}
 	sent := false
-	gorumsConfig, configExists := ss.configProvider.StorageConfig()
+	gorumsConfig, configExists, cfgEpoch := ss.configProvider.StorageConfig()
 	if !configExists {
 		ss.logger.Error("storageconfig does not exist",
 			slog.String("fn", "ss.shareAll"))
@@ -279,6 +295,11 @@ func (ss *StorageService) sendGossip(originID string, key int64, values map[stri
 		if nodeID == ss.id {
 			ss.logger.Error("target is self, gorums configuration error")
 		}
+
+		if retries > 0 {
+			ss.logger.Info("retrying Gossip RPC",
+				slog.String("id", nodeID))
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
 		_, err := gorumsNode.Gossip(ctx, &kvsprotos.GossipMessage{
 			NodeID:         ss.id,
@@ -289,6 +310,11 @@ func (ss *StorageService) sendGossip(originID string, key int64, values map[stri
 			LocalTimestamp: localValue.Timestamp,
 		},
 		)
+		if retries > 0 {
+			ss.logger.Info("completed Gossip RPC",
+				slog.String("id", nodeID))
+		}
+		cancel()
 		sent = true
 		if err != nil {
 			ss.logger.Error("sending of gossip message failed",
@@ -296,8 +322,17 @@ func (ss *StorageService) sendGossip(originID string, key int64, values map[stri
 				slog.Int64("key", key),
 				slog.String("nodeID", nodeID),
 				slog.Int64("value", values[nodeID]))
+			if retries >= 5 {
+				panic("too many retries")
+			}
 		}
-		cancel()
+		if err != nil && retries < 5 {
+			ss.logger.Error("retry gossip message ",
+				slog.Int64("key", key),
+				slog.String("nodeID", nodeID),
+				slog.Int64("value", values[nodeID]))
+			goto retry
+		}
 	}
 	if sent == false {
 		ss.logger.Debug("node is leaf node, no message send",

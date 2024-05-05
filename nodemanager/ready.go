@@ -22,6 +22,7 @@ func (nm *NodeManager) Ready(ctx gorums.ServerCtx, request *nmprotos.ReadyMessag
 		return &nmprotos.ReadyMessage{OK: false, NodeID: nm.id}, fmt.Errorf("node %s is not joined to this node", request.GetNodeID())
 	}
 
+	go nm.SendGroupInfo()
 	nm.eventBus.PushEvent(nmevents.NewNeighbourReadyEvent(request.GetNodeID()))
 	return &nmprotos.ReadyMessage{OK: true, NodeID: nm.id}, nil
 }

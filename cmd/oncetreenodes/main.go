@@ -45,7 +45,6 @@ func main() {
 			}
 			defer file.Close()
 			node := oncetree.NewNode(id, nodeMap[id], file)
-			// node.SetNeighboursFromNodeMap(nodeIDs, nodeMap)
 			if id == "0" {
 				node.Run("", nil)
 			} else {

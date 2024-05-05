@@ -26,7 +26,7 @@ func (c *Client) Run() {
 	if !ok {
 		return
 	}
-	storageCfg, ok := c.gorumsProvider.StorageConfig()
+	storageCfg, ok, _ := c.gorumsProvider.StorageConfig()
 	if !ok {
 		return
 	}
