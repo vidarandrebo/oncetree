@@ -19,7 +19,7 @@ services:
       benchmark-network:
     deploy:
       mode: replicated
-      replicas: 20
+      replicas: 5
 
   genesis:
     build:

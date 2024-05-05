@@ -42,14 +42,22 @@ func main() {
 			if !ok {
 				panic("no gorums node")
 			}
-			// ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout*2)
-			_, err := gorumsNode.Write(context.Background(), &kvsprotos.WriteRequest{
-				Key:   rand.Int63n(10000000),
-				Value: rand.Int63n(1000),
-			})
-			// cancel()
-			if err != nil {
-				panic(fmt.Sprintf("write error: %v", err))
+			if numMsg%10 == 0 || numMsg < 5000 {
+				_, err := gorumsNode.Write(context.Background(), &kvsprotos.WriteRequest{
+					Key:   rand.Int63n(1000),
+					Value: rand.Int63n(1000),
+				})
+				// cancel()
+				if err != nil {
+					panic(fmt.Sprintf("write error: %v", err))
+				}
+			} else {
+				_, err := gorumsNode.Read(context.Background(), &kvsprotos.ReadRequest{
+					Key: rand.Int63n(1000),
+				})
+				if err != nil {
+					fmt.Println("read error: value not found")
+				}
 			}
 			numMsg++
 			if numMsg%10000 == 0 {

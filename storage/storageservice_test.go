@@ -129,7 +129,7 @@ func storageConfig(provider *gorumsprovider.GorumsProvider) (*kvsprotos.Configur
 	nodeMap := make(map[string]uint32)
 	maps.Copy(nodeMap, gorumsNodeMap)
 	provider.SetNodes(nodeMap)
-	cfg, _ := provider.StorageConfig()
+	cfg, _, _ := provider.StorageConfig()
 	return cfg, nodeMap
 }
 
@@ -171,7 +171,7 @@ func TestStorageService_shareAll(t *testing.T) {
 	// add the new node to config
 	nodeMap[":9090"] = 10
 	gorumsProvider.ResetWithNewNodes(nodeMap)
-	cfg, ok := gorumsProvider.StorageConfig()
+	cfg, ok, _ := gorumsProvider.StorageConfig()
 	assert.True(t, ok)
 	time.Sleep(consts.TestWaitAfterWrite)
 
