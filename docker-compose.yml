@@ -4,6 +4,23 @@ networks:
       config:
         - subnet: "172.16.40.0/24"
 services:
+  client-leader:
+    depends_on:
+      - genesis
+      - replica
+    build:
+      context: ./
+      dockerfile: client.Dockerfile
+    entrypoint: ./client
+    command: --knownAddr genesis:8080 --nodeToCrashAddr replica-to-crash:8080
+    image: benchmarkclient
+    tty: true
+    networks:
+      benchmark-network:
+    volumes:
+      - /var/log/oncetree:/app/logs/
+
+
   client:
     depends_on:
       - genesis
@@ -12,14 +29,16 @@ services:
       context: ./
       dockerfile: client.Dockerfile
     entrypoint: ./client
-    command: --knownAddr genesis:8080
+    command: --knownAddr genesis:8080 --nodeToCrashAddr replica-to-crash:8080
     image: benchmarkclient
     tty: true
     networks:
       benchmark-network:
     deploy:
       mode: replicated
-      replicas: 5
+      replicas: 4
+    volumes:
+      - /var/log/oncetree:/app/logs/
 
   genesis:
     build:
@@ -30,6 +49,21 @@ services:
     networks:
       benchmark-network:
         ipv4_address: "172.16.40.2"
+    volumes:
+      - /var/log/oncetree:/app/logs/
+
+  replica-to-crash:
+    depends_on:
+      - genesis
+    build:
+      context: ./
+      dockerfile: replica.Dockerfile
+    entrypoint: ./replica
+    command: --knownAddr genesis:8080
+    image: benchmarkreplica
+    tty: true
+    networks:
+      benchmark-network:
     volumes:
       - /var/log/oncetree:/app/logs/
 
@@ -47,6 +81,6 @@ services:
       benchmark-network:
     deploy:
       mode: replicated
-      replicas: 14
+      replicas: 13
     volumes:
       - /var/log/oncetree:/app/logs/

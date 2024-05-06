@@ -40,6 +40,10 @@ type Node struct {
 	stopChan        chan string
 }
 
+func (n *Node) NodeID(ctx gorums.ServerCtx, request *emptypb.Empty) (response *nodeprotos.IDResponse, err error) {
+	return &nodeprotos.IDResponse{ID: n.id}, nil
+}
+
 func NewNode(id string, rpcAddr string, logFile io.Writer) *Node {
 	if id == "" {
 		id = uuid.New().String()

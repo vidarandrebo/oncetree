@@ -17,7 +17,7 @@ const (
 	NumEventHandlers       = 4
 	NumTaskHandlers        = 16
 	CloseMgrDelay          = 2 * RPCContextTimeout // Time to wait before disposing manager and its connections
-	EventBusQueueLength    = 2
+	EventBusQueueLength    = 128
 	StartupDelay           = 1 * RPCContextTimeout
 	TestWaitAfterWrite     = 10 * time.Second
 )
