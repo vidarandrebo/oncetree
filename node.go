@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/relab/gorums"
@@ -38,6 +39,10 @@ type Node struct {
 	storageService  *storage.StorageService
 	eventbus        *eventbus.EventBus
 	stopChan        chan string
+}
+
+func (n *Node) NodeID(ctx gorums.ServerCtx, request *emptypb.Empty) (response *nodeprotos.IDResponse, err error) {
+	return &nodeprotos.IDResponse{ID: n.id}, nil
 }
 
 func NewNode(id string, rpcAddr string, logFile io.Writer) *Node {
@@ -160,6 +165,7 @@ mainLoop:
 }
 
 func (n *Node) Stop(msg string) {
+	time.Sleep(time.Second)
 	select {
 	case n.stopChan <- msg:
 		n.logger.Info("pushed to stop chan")
@@ -171,7 +177,7 @@ func (n *Node) Stop(msg string) {
 
 func (n *Node) Crash(ctx gorums.ServerCtx, request *emptypb.Empty) (response *emptypb.Empty, err error) {
 	n.logger.Info("RPC Crash")
-	n.Stop("crash RPC")
+	go n.Stop("crash RPC")
 	return &emptypb.Empty{}, nil
 }
 

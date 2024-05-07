@@ -12,7 +12,11 @@ message NodesResponse {
 message NodesRequest {
     string Origin = 1;
 }
+message IDResponse {
+    string ID = 1;
+}
 service NodeService {
     rpc Crash(google.protobuf.Empty) returns (google.protobuf.Empty) {}
     rpc Nodes(NodesRequest) returns (NodesResponse) {}
+    rpc NodeID(google.protobuf.Empty) returns (IDResponse){}
 }

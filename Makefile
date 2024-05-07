@@ -9,6 +9,8 @@ gorums_go := $(proto_src:%.proto=%_gorums.pb.go)
 build: protos logs
 	go build -o bin/oncetreenodes cmd/oncetreenodes/main.go
 	go build -o bin/oncetreeclient cmd/oncetreeclient/main.go
+	go build -o bin/benchmarkclient cmd/benchmarkclient/main.go
+	go build -o bin/benchmarkreplica cmd/benchmarkreplica/main.go
 
 .PHONY: test
 test:
@@ -40,7 +42,6 @@ deps:
 	go install github.com/relab/gorums/cmd/protoc-gen-gorums@master
 
 .PHONY: protos
-
 protos: $(proto_go) $(gorums_go) format
 
 %.pb.go %_gorums.pb.go : %.proto
