@@ -26,19 +26,25 @@ func main() {
 	time.Sleep(consts.RPCContextTimeout * 3)
 	knownAddr := flag.String("knownAddr", "", "IP address of one of the nodes in the network")
 	nodeToCrashAddr := flag.String("nodeToCrashAddr", "", "IP address of one of the node to crash")
+	isLeader := flag.Bool("isLeader", false, "Is node that crashes nodes")
 	flag.Parse()
 	fmt.Println("hello from client")
 	fmt.Printf("knownAddr: %s\n", *knownAddr)
 	n := 100000
+
+	fmt.Println("isLeader:", *isLeader)
 
 	gorumsProvider := gorumsprovider.New(slog.Default())
 	nodeToCrashId := getNodeToCrashID(gorumsProvider, *nodeToCrashAddr)
 	fmt.Println("node to crash: ", nodeToCrashId)
 	gorumsProvider.Reset()
 	benchMarkNodes := mapOnceTreeNodes(gorumsProvider, *knownAddr)
+
+	// all leader will not write to the node that should crash.
+	if !*isLeader {
+		delete(benchMarkNodes, nodeToCrashId)
+	}
 	gorumsProvider.ResetWithNewNodes(benchmark.GorumsMap(benchMarkNodes))
-	fmt.Println(benchMarkNodes)
-	fmt.Println(len(benchMarkNodes))
 	cfg, ok, _ := gorumsProvider.StorageConfig()
 	if !ok {
 		panic("no storage config")
@@ -46,6 +52,7 @@ func main() {
 	WriteStartValues(1000, benchMarkNodes, cfg)
 	time.Sleep(consts.RPCContextTimeout)
 	fmt.Println("start values written")
+
 	numMsg := int64(0)
 	accumulator := 0 * time.Second
 	t0 := time.Now()
@@ -70,7 +77,7 @@ func main() {
 					Value: rand.Int63n(1000000),
 				})
 				if err != nil {
-					fmt.Println("read error: value not found")
+					fmt.Println("write error")
 				}
 			} else {
 				currentOperationType = benchmark.Read
@@ -78,7 +85,7 @@ func main() {
 					Key: rand.Int63n(1000),
 				})
 				if err != nil {
-					fmt.Println("read error: value not found")
+					fmt.Println("read error: value not found", err)
 				}
 			}
 			endTime := time.Now()
@@ -94,9 +101,17 @@ func main() {
 				time.Sleep(sleepUnit)
 			}
 			numMsg++
-			//			if numMsg%10000 == 0 {
-			//				fmt.Println("sent", numMsg, "messages")
-			//			}
+			if numMsg == 20000 && *isLeader {
+				nodeCfg, ok := gorumsProvider.NodeConfig()
+				if !ok {
+					panic("no gorums node")
+				}
+				CrashNode(nodeCfg, benchMarkNodes[nodeToCrashId].GorumsID)
+				delete(benchMarkNodes, nodeToCrashId)
+				gorumsProvider.ResetWithNewNodes(benchmark.GorumsMap(benchMarkNodes))
+				cfg, ok, _ = gorumsProvider.StorageConfig()
+				break
+			}
 		}
 		i++
 	}
@@ -107,6 +122,18 @@ func main() {
 		panic("failed to get hostname")
 	}
 	benchmark.WriteResultsToDisk(results, id)
+}
+
+func CrashNode(cfg *nodeprotos.Configuration, gorumsID uint32) {
+	node, ok := cfg.Node(gorumsID)
+	if !ok {
+		panic("no gorums node")
+	}
+	_, err := node.Crash(context.Background(), &emptypb.Empty{})
+	if err != nil {
+		panic("failed to crash node")
+	}
+	fmt.Println("crashed node")
 }
 
 func WriteStartValues(n int64, benchMarkNodes map[string]benchmark.Node, cfg *kvsprotos.Configuration) {

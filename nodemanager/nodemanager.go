@@ -149,7 +149,8 @@ func (nm *NodeManager) SendPrepare(e fdevents.NodeFailedEvent) {
 	nm.recoveryProcess.isLeader = response.GetOK()
 
 	if response.GetOK() {
-		nm.eventBus.PushTask(nm.SendAccept)
+		go nm.SendAccept()
+		// nm.eventBus.PushTask(nm.SendAccept)
 	}
 }
 
@@ -193,7 +194,8 @@ func (nm *NodeManager) SendAccept() {
 	}
 
 	if learn.GetOK() {
-		nm.eventBus.PushTask(nm.SendCommit)
+		go nm.SendCommit()
+		// nm.eventBus.PushTask(nm.SendCommit)
 	}
 }
 
@@ -526,4 +528,8 @@ func (nm *NodeManager) NextJoinID() string {
 
 func (nm *NodeManager) NodeConfig() (*nodeprotos.Configuration, bool) {
 	return nm.gorumsProvider.NodeConfig()
+}
+
+func (nm *NodeManager) IsBlacklisted(nodeID string) bool {
+	return nm.blackList.Contains(nodeID)
 }
