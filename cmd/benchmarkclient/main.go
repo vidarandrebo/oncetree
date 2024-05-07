@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"math/rand"
 	"os"
+	"runtime"
 	"time"
 
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -22,7 +23,7 @@ import (
 )
 
 func main() {
-	// runtime.GOMAXPROCS(1)
+	runtime.GOMAXPROCS(1)
 	time.Sleep(consts.RPCContextTimeout * 3)
 	knownAddr := flag.String("knownAddr", "", "IP address of one of the nodes in the network")
 	nodeToCrashAddr := flag.String("nodeToCrashAddr", "", "IP address of one of the node to crash")
@@ -56,7 +57,7 @@ func main() {
 	numMsg := int64(0)
 	accumulator := 0 * time.Second
 	t0 := time.Now()
-	timePerRequest := 300 * time.Microsecond
+	timePerRequest := 500 * time.Microsecond
 	sleepUnit := 10 * time.Millisecond
 	i := 0
 	results := make([]benchmark.Result, 0, n+len(benchMarkNodes))

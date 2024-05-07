@@ -7,6 +7,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/vidarandrebo/oncetree/storage/sevents"
+
 	"github.com/vidarandrebo/oncetree/nodemanager/nmenums"
 
 	"github.com/vidarandrebo/oncetree/failuredetector/fdevents"
@@ -56,6 +58,17 @@ func New(id string, logger *slog.Logger, nodeManager *nodemanager.NodeManager, e
 			}
 		},
 	)
+	eventBus.RegisterHandler(
+		reflect.TypeOf(sevents.GossipFailedEvent{}),
+		func(e any) {
+			if event, ok := e.(sevents.GossipFailedEvent); ok {
+				fd.mut.Lock()
+				if fd.nodes.Contains(event.NodeID) {
+					fd.strikes.Increment(event.NodeID, 1)
+				}
+				fd.mut.Unlock()
+			}
+		})
 	return fd
 }
 
@@ -123,8 +136,9 @@ func (fd *FailureDetector) sendHeartbeat() {
 	fd.logger.Debug("sending heartbeat",
 		slog.Any("nodeIDs", nodeIDs))
 	msg := fdprotos.HeartbeatMessage{NodeID: fd.id}
-	ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
-	defer cancel()
+	// ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
+	// defer cancel()
+	ctx := context.Background()
 	gorumsConfig.Heartbeat(ctx, &msg)
 	if err := ctx.Err(); err != nil {
 		fd.logger.Error("error when sending heartbeat",

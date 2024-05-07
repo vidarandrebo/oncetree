@@ -5,6 +5,8 @@ import (
 	"log/slog"
 	"reflect"
 
+	"github.com/vidarandrebo/oncetree/storage/sevents"
+
 	"github.com/vidarandrebo/oncetree/nodemanager/nmevents"
 
 	"github.com/vidarandrebo/oncetree/gorumsprovider"
@@ -247,30 +249,14 @@ func (ss *StorageService) shareAll(nodeID string) {
 }
 
 func (ss *StorageService) sendGossip(originID string, key int64, values map[string]int64, ts int64, localValue TimestampedValue) {
-	cfgEpoch := 0
-	retries := -1
-
-retry:
-	retries++
-	if retries < 1 {
-		ss.logger.Debug(
-			"sendGossip",
-			slog.String("originID", originID),
-			slog.Int64("key", key),
-			slog.Int64("ts", ts),
-		)
-	} else {
-		ss.configProvider.Reconnect(cfgEpoch)
-		ss.logger.Info(
-			"retrying sendGossip",
-			slog.String("originID", originID),
-			slog.Int64("key", key),
-			slog.Int("retries", retries),
-			slog.Int64("ts", ts),
-		)
-	}
+	ss.logger.Debug(
+		"sendGossip",
+		slog.String("originID", originID),
+		slog.Int64("key", key),
+		slog.Int64("ts", ts),
+	)
 	sent := false
-	gorumsConfig, configExists, cfgEpoch := ss.configProvider.StorageConfig()
+	gorumsConfig, configExists, _ := ss.configProvider.StorageConfig()
 	if !configExists {
 		ss.logger.Error("storageconfig does not exist",
 			slog.String("fn", "ss.shareAll"))
@@ -278,6 +264,11 @@ retry:
 	}
 	for _, gorumsNode := range gorumsConfig.Nodes() {
 		nodeID, ok := ss.nodeManager.NodeID(gorumsNode.ID())
+		if ss.nodeManager.IsBlacklisted(nodeID) {
+			ss.logger.Warn("skipping node, blacklisted",
+				slog.String("nodeID", nodeID))
+			continue
+		}
 		if !ok {
 			ss.logger.Error(
 				"node lookup failed",
@@ -296,11 +287,8 @@ retry:
 			ss.logger.Error("target is self, gorums configuration error")
 		}
 
-		if retries > 0 {
-			ss.logger.Info("retrying Gossip RPC",
-				slog.String("id", nodeID))
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
+		// ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
+		ctx := context.Background()
 		_, err := gorumsNode.Gossip(ctx, &kvsprotos.GossipMessage{
 			NodeID:         ss.id,
 			Key:            key,
@@ -310,11 +298,7 @@ retry:
 			LocalTimestamp: localValue.Timestamp,
 		},
 		)
-		if retries > 0 {
-			ss.logger.Info("completed Gossip RPC",
-				slog.String("id", nodeID))
-		}
-		cancel()
+		// cancel()
 		sent = true
 		if err != nil {
 			ss.logger.Error("sending of gossip message failed",
@@ -322,16 +306,7 @@ retry:
 				slog.Int64("key", key),
 				slog.String("nodeID", nodeID),
 				slog.Int64("value", values[nodeID]))
-			if retries >= 5 {
-				panic("too many retries")
-			}
-		}
-		if err != nil && retries < 5 {
-			ss.logger.Error("retry gossip message ",
-				slog.Int64("key", key),
-				slog.String("nodeID", nodeID),
-				slog.Int64("value", values[nodeID]))
-			goto retry
+			ss.eventBus.PushEvent(sevents.NewGossipFailedEvent(nodeID))
 		}
 	}
 	if sent == false {

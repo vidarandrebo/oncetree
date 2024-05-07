@@ -15,9 +15,9 @@ const (
 	LogLevel               = slog.LevelInfo
 	LogFolder              = "logs"
 	NumEventHandlers       = 4
-	NumTaskHandlers        = 16
+	NumTaskHandlers        = 4
 	CloseMgrDelay          = 2 * RPCContextTimeout // Time to wait before disposing manager and its connections
-	EventBusQueueLength    = 128
+	EventBusQueueLength    = 16
 	StartupDelay           = 1 * RPCContextTimeout
 	TestWaitAfterWrite     = 10 * time.Second
 )
