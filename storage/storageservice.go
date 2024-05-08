@@ -28,10 +28,13 @@ type StorageService struct {
 	timestamp      *mutex.RWMutex[int64]
 	nodeManager    *nodemanager.NodeManager
 	eventBus       *eventbus.EventBus
+	gossipSender   *GossipSender
 	configProvider gorumsprovider.StorageConfigProvider
 }
 
 func NewStorageService(id string, logger *slog.Logger, nodeManager *nodemanager.NodeManager, eventBus *eventbus.EventBus, configProvider gorumsprovider.StorageConfigProvider) *StorageService {
+	gossipSender := NewGossipSender(logger, configProvider, nodeManager.GorumsID)
+
 	ss := &StorageService{
 		id:             id,
 		logger:         logger.With(slog.Group("node", slog.String("module", "storageservice"))),
@@ -39,6 +42,7 @@ func NewStorageService(id string, logger *slog.Logger, nodeManager *nodemanager.
 		nodeManager:    nodeManager,
 		timestamp:      mutex.New[int64](0),
 		eventBus:       eventBus,
+		gossipSender:   gossipSender,
 		configProvider: configProvider,
 	}
 	eventBus.RegisterHandler(reflect.TypeOf(nmevents.NeighbourReadyEvent{}), func(e any) {
@@ -249,6 +253,23 @@ func (ss *StorageService) shareAll(nodeID string) {
 }
 
 func (ss *StorageService) sendGossip(originID string, key int64, values map[string]int64, ts int64, localValue TimestampedValue) {
+	for id, value := range values {
+		if id == originID {
+			continue
+		}
+		message := PerNodeGossip{
+			NodeID:         ss.id,
+			Key:            key,
+			AggValue:       value,
+			AggTimestamp:   ts,
+			LocalValue:     localValue.Value,
+			LocalTimestamp: localValue.Timestamp,
+		}
+		ss.gossipSender.Enqueue(message, originID, id)
+	}
+}
+
+func (ss *StorageService) oldSendGossip(originID string, key int64, values map[string]int64, ts int64, localValue TimestampedValue) {
 	ss.logger.Debug(
 		"sendGossip",
 		slog.String("originID", originID),
