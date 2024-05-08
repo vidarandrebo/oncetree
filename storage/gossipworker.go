@@ -2,19 +2,23 @@ package storage
 
 import (
 	"context"
+	"log/slog"
+
 	"github.com/vidarandrebo/oncetree/gorumsprovider"
 	kvsprotos "github.com/vidarandrebo/oncetree/protos/keyvaluestorage"
 )
 
 type GossipWorker struct {
+	logger         *slog.Logger
 	configProvider gorumsprovider.StorageConfigProvider
 	pending        chan PerNodeGossip
 	target         string
 	gorumsID       func(nodeID string) (uint32, bool)
 }
 
-func NewGossipWorker(configProvider gorumsprovider.StorageConfigProvider, gorumsIDFunc func(nodeID string) (uint32, bool), target string) *GossipWorker {
+func NewGossipWorker(logger *slog.Logger, configProvider gorumsprovider.StorageConfigProvider, gorumsIDFunc func(nodeID string) (uint32, bool), target string) *GossipWorker {
 	worker := &GossipWorker{
+		logger:         logger.With(slog.Group("node", slog.String("module", "GossipWorker"))),
 		pending:        make(chan PerNodeGossip),
 		configProvider: configProvider,
 		target:         target,
@@ -36,14 +40,20 @@ func (gw *GossipWorker) Run() {
 func (gw *GossipWorker) sendGossip(gossip PerNodeGossip) {
 	cfg, ok, _ := gw.configProvider.StorageConfig()
 	if !ok {
+		gw.logger.Error("no cfg, skipping gossip",
+			slog.String("target", gw.target))
 		return
 	}
 	gorumsID, ok := gw.gorumsID(gw.target)
 	if !ok {
+		gw.logger.Error("node not in manager, skipping",
+			slog.String("target", gw.target))
 		return
 	}
 	node, ok := cfg.Node(gorumsID)
 	if !ok {
+		gw.logger.Error("node not in config, skipping",
+			slog.String("target", gw.target))
 		return
 	}
 	ctx := context.Background()
@@ -55,5 +65,12 @@ func (gw *GossipWorker) sendGossip(gossip PerNodeGossip) {
 		LocalValue:     gossip.LocalValue,
 		LocalTimestamp: gossip.LocalTimestamp,
 	}
-	node.Gossip(ctx, &message)
+	_, err := node.Gossip(ctx, &message)
+	if err != nil {
+		gw.logger.Error("sending of gossip message failed",
+			slog.Any("err", err),
+			slog.Int64("key", gossip.Key),
+			slog.String("target", gw.target),
+			slog.Int64("value", gossip.AggValue))
+	}
 }

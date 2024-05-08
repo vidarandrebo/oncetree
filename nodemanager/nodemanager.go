@@ -259,7 +259,13 @@ func (nm *NodeManager) Neighbours() []maps.KeyValuePair[string, *Neighbour] {
 }
 
 func (nm *NodeManager) NeighbourIDs() []string {
-	return nm.neighbours.Keys()
+	IDs := make([]string, 0)
+	for _, neighbour := range nm.neighbours.Values() {
+		if (neighbour.Role == nmenums.Parent) || (neighbour.Role == nmenums.Child) {
+			IDs = append(IDs, neighbour.ID)
+		}
+	}
+	return IDs
 }
 
 func (nm *NodeManager) GorumsNeighbourMap() map[string]uint32 {

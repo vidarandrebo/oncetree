@@ -13,7 +13,7 @@ build: protos logs
 	go build -o bin/benchmarkreplica cmd/benchmarkreplica/main.go
 
 .PHONY: test
-test:
+test: protos
 	go test ./... -race
 	go test ./...
 

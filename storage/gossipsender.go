@@ -41,6 +41,6 @@ func (gs *GossipSender) ensureWorkerExists(origin string, target string) {
 		gs.workers[origin] = make(map[string]*GossipWorker)
 	}
 	if _, ok := gs.workers[origin][target]; !ok {
-		gs.workers[origin][target] = NewGossipWorker(gs.configProvider, gs.gorumsID, target)
+		gs.workers[origin][target] = NewGossipWorker(gs.logger, gs.configProvider, gs.gorumsID, target)
 	}
 }
