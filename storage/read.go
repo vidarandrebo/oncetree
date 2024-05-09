@@ -18,7 +18,7 @@ func (ss *StorageService) Read(ctx gorums.ServerCtx, request *kvsprotos.ReadRequ
 
 // ReadLocal rpc is used for checking that local values are propagated as intended
 func (ss *StorageService) ReadLocal(ctx gorums.ServerCtx, request *kvsprotos.ReadLocalRequest) (*kvsprotos.ReadResponse, error) {
-	ss.logger.Info("ReadLocal rpc",
+	ss.logger.Debug("ReadLocal rpc",
 		slog.Int64("key", request.GetKey()),
 		slog.String("nodeID", request.GetNodeID()))
 	value, ok := ss.storage.ReadLocalValue(request.GetKey(), request.GetNodeID())

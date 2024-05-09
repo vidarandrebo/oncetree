@@ -57,7 +57,7 @@ func main() {
 	numMsg := int64(0)
 	accumulator := 0 * time.Second
 	t0 := time.Now()
-	timePerRequest := 500 * time.Microsecond
+	timePerRequest := 1000 * time.Microsecond
 	sleepUnit := 10 * time.Millisecond
 	i := 0
 	results := make([]benchmark.Result, 0, n+len(benchMarkNodes))

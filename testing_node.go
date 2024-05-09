@@ -60,7 +60,7 @@ func StartTestNode(discardLogs bool) (*Node, *sync.WaitGroup) {
 		node.Run(":9080", readyWg.Done)
 		wg.Done()
 	}()
-	// time.Sleep(consts.StartupDelay)
+	time.Sleep(consts.StartupDelay)
 	return node, &wg
 }
 
