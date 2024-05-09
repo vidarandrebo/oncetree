@@ -53,9 +53,9 @@ func NewNode(id string, rpcAddr string, logFile io.Writer) *Node {
 		Level: consts.LogLevel,
 	}
 	logWriter := io.MultiWriter(logFile, os.Stderr)
-	if logFile == io.Discard {
-		logWriter = io.Discard
-	}
+	//	if logFile == io.Discard {
+	//		logWriter = io.Discard
+	//	}
 	logHandler := slog.NewTextHandler(logWriter, &logHandlerOpts)
 
 	logger := slog.New(logHandler).With(slog.Group("node", slog.String("id", id)))
@@ -165,7 +165,6 @@ mainLoop:
 }
 
 func (n *Node) Stop(msg string) {
-	time.Sleep(time.Second)
 	select {
 	case n.stopChan <- msg:
 		n.logger.Info("pushed to stop chan")
@@ -177,7 +176,10 @@ func (n *Node) Stop(msg string) {
 
 func (n *Node) Crash(ctx gorums.ServerCtx, request *emptypb.Empty) (response *emptypb.Empty, err error) {
 	n.logger.Info("RPC Crash")
-	go n.Stop("crash RPC")
+	go func() {
+		time.Sleep(time.Second)
+		n.Stop("crash RPC")
+	}()
 	return &emptypb.Empty{}, nil
 }
 

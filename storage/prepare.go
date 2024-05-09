@@ -8,7 +8,7 @@ import (
 )
 
 func (ss *StorageService) Prepare(ctx gorums.ServerCtx, request *kvsprotos.PrepareMessage) (*kvsprotos.PromiseMessage, error) {
-	ss.logger.Info("Prepare RPC",
+	ss.logger.Debug("Prepare RPC",
 		slog.Int64("key", request.GetKey()),
 		slog.String("failedNodeID", request.GetFailedNodeID()))
 	value, ok := ss.storage.ReadLocalValue(request.GetKey(), request.GetFailedNodeID())

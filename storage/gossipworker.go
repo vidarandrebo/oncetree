@@ -4,6 +4,8 @@ import (
 	"context"
 	"log/slog"
 
+	"github.com/vidarandrebo/oncetree/consts"
+
 	"github.com/vidarandrebo/oncetree/gorumsprovider"
 	kvsprotos "github.com/vidarandrebo/oncetree/protos/keyvaluestorage"
 )
@@ -14,15 +16,17 @@ type GossipWorker struct {
 	pending        chan PerNodeGossip
 	target         string
 	gorumsID       func(nodeID string) (uint32, bool)
+	hasSkipped     bool
 }
 
 func NewGossipWorker(logger *slog.Logger, configProvider gorumsprovider.StorageConfigProvider, gorumsIDFunc func(nodeID string) (uint32, bool), target string) *GossipWorker {
 	worker := &GossipWorker{
 		logger:         logger.With(slog.Group("node", slog.String("module", "GossipWorker"))),
-		pending:        make(chan PerNodeGossip),
+		pending:        make(chan PerNodeGossip, consts.GossipWorkerBuffSize),
 		configProvider: configProvider,
 		target:         target,
 		gorumsID:       gorumsIDFunc,
+		hasSkipped:     false,
 	}
 	go worker.Run()
 	return worker
@@ -46,8 +50,11 @@ func (gw *GossipWorker) sendGossip(gossip PerNodeGossip) {
 	}
 	gorumsID, ok := gw.gorumsID(gw.target)
 	if !ok {
-		gw.logger.Error("node not in manager, skipping",
-			slog.String("target", gw.target))
+		if !gw.hasSkipped {
+			gw.logger.Error("node not in manager, skipping",
+				slog.String("target", gw.target))
+		}
+		gw.hasSkipped = true
 		return
 	}
 	node, ok := cfg.Node(gorumsID)

@@ -15,14 +15,14 @@ build: protos logs
 .PHONY: test
 test: protos
 	go test ./... -race
-	go test ./...
+	go test ./... -v
 
 logs:
 	mkdir -p logs
 
 .PHONY: bench
 bench:
-	go test -run=None ./... -bench=. -benchmem -benchtime=20s
+	go test -run=None ./... -bench=. -benchmem -benchtime=100000x
 
 .PHONY: format
 format:

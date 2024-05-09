@@ -42,15 +42,13 @@ func (ss *StorageService) Write(ctx gorums.ServerCtx, request *kvsprotos.WriteRe
 
 	if ok {
 		// only start gossip if write was successful
-		ss.eventBus.PushTask(func() {
-			ss.sendGossip(
-				ss.id,
-				request.GetKey(),
-				valuesToGossip,
-				writeTs,
-				TimestampedValue{Value: localValue.Value, Timestamp: writeTs},
-			)
-		})
+		ss.sendGossip(
+			ss.id,
+			request.GetKey(),
+			valuesToGossip,
+			writeTs,
+			TimestampedValue{Value: localValue.Value, Timestamp: writeTs},
+		)
 	} else {
 		ss.logger.Warn(
 			"write failed because existing value has higher timestamp",

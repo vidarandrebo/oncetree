@@ -209,11 +209,10 @@ func TestStorageService_Write(t *testing.T) {
 	keys := keysFromValueMap(writtenValues)
 
 	for _, key := range keys.Values() {
-		ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
+		ctx := context.Background()
 		responses, err := cfg.ReadAll(ctx, &kvsprotos.ReadRequest{
 			Key: key,
 		})
-		cancel()
 		assert.Nil(t, err)
 		assert.Equal(t, len(testNodes), len(responses.GetValue()))
 		shouldBe := aggValueForKey(key, writtenValues)
@@ -324,9 +323,8 @@ func TestStorageService_RecoverValues(t *testing.T) {
 	// crash node 2
 	node2, exists := nodeCfg.Node(2)
 	assert.True(t, exists)
-	ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
+	ctx := context.Background()
 	_, err := node2.Crash(ctx, &emptypb.Empty{})
-	cancel()
 	assert.Nil(t, err)
 	time.Sleep(consts.HeartbeatSendInterval * consts.FailureDetectorStrikes * 2)
 
@@ -334,12 +332,11 @@ func TestStorageService_RecoverValues(t *testing.T) {
 		for _, id := range shouldNotHaveValue {
 			node, exists := storageCfg.Node(id)
 			assert.True(t, exists)
-			ctx, cancel = context.WithTimeout(context.Background(), consts.RPCContextTimeout)
+			ctx = context.Background()
 			response, err := node.ReadLocal(ctx, &kvsprotos.ReadLocalRequest{
 				Key:    key,
 				NodeID: "0",
 			})
-			cancel()
 			assert.NotNil(t, err)
 			assert.Equal(t, int64(0), response.GetValue())
 		}
@@ -347,12 +344,11 @@ func TestStorageService_RecoverValues(t *testing.T) {
 		for _, id := range shouldHaveValue {
 			node, exists := storageCfg.Node(id)
 			assert.True(t, exists)
-			ctx, cancel = context.WithTimeout(context.Background(), consts.RPCContextTimeout)
+			ctx = context.Background()
 			response, err := node.ReadLocal(ctx, &kvsprotos.ReadLocalRequest{
 				Key:    key,
 				NodeID: "0",
 			})
-			cancel()
 			assert.Nil(t, err)
 			assert.Equal(t, nodesValueForKey(key, joinedNodes, valuesWritten), response.GetValue())
 		}

@@ -5,8 +5,6 @@ import (
 	"log/slog"
 	"reflect"
 
-	"github.com/vidarandrebo/oncetree/storage/sevents"
-
 	"github.com/vidarandrebo/oncetree/nodemanager/nmevents"
 
 	"github.com/vidarandrebo/oncetree/gorumsprovider"
@@ -14,7 +12,6 @@ import (
 	"github.com/relab/gorums"
 	"github.com/vidarandrebo/oncetree/concurrent/maps"
 	"github.com/vidarandrebo/oncetree/concurrent/mutex"
-	"github.com/vidarandrebo/oncetree/consts"
 	"github.com/vidarandrebo/oncetree/eventbus"
 	"github.com/vidarandrebo/oncetree/nodemanager"
 	kvsprotos "github.com/vidarandrebo/oncetree/protos/keyvaluestorage"
@@ -68,24 +65,23 @@ func (ss *StorageService) SendPrepare(event nmevents.TreeRecoveredEvent) {
 	for _, key := range keySet.Values() {
 		storedValue, ok := ss.storage.ReadLocalValue(key, event.FailedNodeID)
 		if !ok {
-			ss.logger.Info("storage does not contain value",
+			ss.logger.Warn("storage does not contain value",
 				slog.Int64("key", key))
 			continue
 			// TODO, might need to actually send message here
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
+		ctx := context.Background()
 		response, err := cfg.Prepare(ctx, &kvsprotos.PrepareMessage{
 			NodeID:       ss.id,
 			Key:          key,
 			Ts:           storedValue.Timestamp,
 			FailedNodeID: event.FailedNodeID,
 		})
-		cancel()
 		if err != nil {
 			panic("failed to get response")
 		}
 		if response.GetOK() {
-			ss.logger.Info("node has latest ts",
+			ss.logger.Debug("node has latest ts",
 				slog.Int64("key", key),
 				slog.Int64("ts", storedValue.Timestamp))
 		} else {
@@ -112,9 +108,6 @@ func (ss *StorageService) SendAccept(failedNodeID string) {
 		ss.logger.Error("failed to get storage-config")
 	}
 	for _, key := range keySet.Values() {
-		ts := ss.timestamp.Lock()
-		*ts++
-		writeTs := *ts
 		localValue, readValueErr := ss.storage.ReadValueFromNode(key, ss.id)
 		if readValueErr != nil {
 			ss.logger.Info("node does not contain value",
@@ -127,12 +120,15 @@ func (ss *StorageService) SendAccept(failedNodeID string) {
 			ss.logger.Info("failed node and self does not store value for key",
 				slog.String("id", failedNodeID),
 				slog.Int64("key", key))
-			ss.timestamp.Unlock(&ts)
 			continue
 		} else if !ok {
 			oldLocal = TimestampedValue{Value: 0, Timestamp: 0}
 		}
 		newLocalValue := oldLocal.Value + localValue.Value
+
+		ts := ss.timestamp.Lock()
+		*ts++
+		writeTs := *ts
 
 		ok = ss.storage.WriteValue(key, newLocalValue, writeTs, ss.id)
 		if !ok {
@@ -156,7 +152,7 @@ func (ss *StorageService) SendAccept(failedNodeID string) {
 		}
 
 		valuesToGossipSafe := maps.FromMap(valuesToGossip)
-		ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
+		ctx := context.Background()
 		response, err := cfg.Accept(ctx, &kvsprotos.AcceptMessage{
 			NodeID:       ss.id,
 			Key:          key,
@@ -183,12 +179,11 @@ func (ss *StorageService) SendAccept(failedNodeID string) {
 			alteredRequest.AggValue = aggValue
 			return &alteredRequest
 		})
-		cancel()
 		if err != nil {
 			ss.logger.Error("sending accept failed",
 				slog.Any("err", err))
 		}
-		ss.logger.Info("got response from accept",
+		ss.logger.Debug("got response from accept",
 			slog.Bool("ok", response.GetOK()))
 	}
 }
@@ -230,7 +225,7 @@ func (ss *StorageService) shareAll(nodeID string) {
 				slog.Any("err", err))
 			continue
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
+		ctx := context.Background()
 		request := &kvsprotos.GossipMessage{
 			NodeID:         ss.id,
 			Key:            key,
@@ -245,7 +240,6 @@ func (ss *StorageService) shareAll(nodeID string) {
 				"gossip failed",
 				slog.Any("err", err))
 		}
-		cancel()
 	}
 	ss.logger.Info(
 		"completed sharing values",
@@ -266,73 +260,6 @@ func (ss *StorageService) sendGossip(originID string, key int64, values map[stri
 			LocalTimestamp: localValue.Timestamp,
 		}
 		ss.gossipSender.Enqueue(message, originID, id)
-	}
-}
-
-func (ss *StorageService) oldSendGossip(originID string, key int64, values map[string]int64, ts int64, localValue TimestampedValue) {
-	ss.logger.Debug(
-		"sendGossip",
-		slog.String("originID", originID),
-		slog.Int64("key", key),
-		slog.Int64("ts", ts),
-	)
-	sent := false
-	gorumsConfig, configExists, _ := ss.configProvider.StorageConfig()
-	if !configExists {
-		ss.logger.Error("storageconfig does not exist",
-			slog.String("fn", "ss.shareAll"))
-		return
-	}
-	for _, gorumsNode := range gorumsConfig.Nodes() {
-		nodeID, ok := ss.nodeManager.NodeID(gorumsNode.ID())
-		if ss.nodeManager.IsBlacklisted(nodeID) {
-			ss.logger.Warn("skipping node, blacklisted",
-				slog.String("nodeID", nodeID))
-			continue
-		}
-		if !ok {
-			ss.logger.Error(
-				"node lookup failed",
-				slog.Uint64("gorumsID", uint64(gorumsNode.ID())),
-			)
-			continue
-		}
-		// skip returning to originID and sending to self.
-		if nodeID == originID {
-			ss.logger.Debug(
-				"target is origin, skipping gossip",
-				slog.String("id", nodeID))
-			continue
-		}
-		if nodeID == ss.id {
-			ss.logger.Error("target is self, gorums configuration error")
-		}
-
-		// ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
-		ctx := context.Background()
-		_, err := gorumsNode.Gossip(ctx, &kvsprotos.GossipMessage{
-			NodeID:         ss.id,
-			Key:            key,
-			AggValue:       values[nodeID],
-			AggTimestamp:   ts,
-			LocalValue:     localValue.Value,
-			LocalTimestamp: localValue.Timestamp,
-		},
-		)
-		// cancel()
-		sent = true
-		if err != nil {
-			ss.logger.Error("sending of gossip message failed",
-				slog.Any("err", err),
-				slog.Int64("key", key),
-				slog.String("nodeID", nodeID),
-				slog.Int64("value", values[nodeID]))
-			ss.eventBus.PushEvent(sevents.NewGossipFailedEvent(nodeID))
-		}
-	}
-	if sent == false {
-		ss.logger.Debug("node is leaf node, no message send",
-			slog.Any("key", key))
 	}
 }
 

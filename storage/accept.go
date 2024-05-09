@@ -8,7 +8,7 @@ import (
 )
 
 func (ss *StorageService) Accept(ctx gorums.ServerCtx, request *kvsprotos.AcceptMessage) (*kvsprotos.LearnMessage, error) {
-	ss.logger.Info("ss.Accept RPC",
+	ss.logger.Debug("ss.Accept RPC",
 		slog.String("failedNodeID", request.GetFailedNodeID()),
 		slog.String("id", request.GetNodeID()),
 		slog.Int64("key", request.GetKey()),

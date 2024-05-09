@@ -20,4 +20,5 @@ const (
 	EventBusQueueLength    = 16
 	StartupDelay           = 1 * RPCContextTimeout
 	TestWaitAfterWrite     = 10 * time.Second
+	GossipWorkerBuffSize   = 10000
 )

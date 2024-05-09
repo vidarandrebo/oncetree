@@ -18,7 +18,6 @@ import (
 
 	"github.com/vidarandrebo/oncetree/gorumsprovider"
 
-	"github.com/vidarandrebo/oncetree/consts"
 	"github.com/vidarandrebo/oncetree/eventbus"
 
 	"github.com/google/uuid"
@@ -137,8 +136,7 @@ func (nm *NodeManager) SendPrepare(e fdevents.NodeFailedEvent) {
 		panic("creation of recovery gorums config failed") // TODO - remove in prod
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
-	defer cancel()
+	ctx := context.Background()
 	response, err := cfg.Prepare(ctx, &nmprotos.PrepareMessage{
 		NodeID:  nm.id,
 		GroupID: failedNode.ID,
@@ -160,8 +158,7 @@ func (nm *NodeManager) SendAccept() {
 	nm.recoveryProcess.mut.Lock()
 	defer nm.recoveryProcess.mut.Unlock()
 
-	ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
-	defer cancel()
+	ctx := context.Background()
 	cfg, err := nm.gorumsProvider.CustomNodeManagerConfig(nm.GorumsRecoveryMap())
 	if err != nil {
 		nm.logger.Error("creation of recovery gorums config failed",
@@ -207,8 +204,7 @@ func (nm *NodeManager) SendCommit() {
 	}
 	nm.recoveryProcess.mut.Lock()
 	defer nm.recoveryProcess.mut.Unlock()
-	ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
-	defer cancel()
+	ctx := context.Background()
 	cfg.Commit(ctx, &nmprotos.CommitMessage{GroupID: nm.recoveryProcess.groupID})
 	failedNode, ok := nm.neighbours.Get(nm.recoveryProcess.groupID)
 	if !ok {
@@ -406,7 +402,7 @@ func (nm *NodeManager) SendJoin(knownAddr string) {
 	for !joined {
 		knownNodeID, _ := uuid.NewV7()
 		nm.AddNeighbour(knownNodeID.String(), knownAddr, nmenums.Tmp)
-		ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
+		ctx := context.Background()
 		nm.gorumsProvider.SetNodes(nm.TmpGorumsMap())
 		cfg, ok := nm.gorumsProvider.NodeManagerConfig()
 		if !ok {
@@ -437,7 +433,6 @@ func (nm *NodeManager) SendJoin(knownAddr string) {
 		} else {
 			knownAddr = response.NextAddress
 		}
-		cancel()
 	}
 }
 
@@ -461,8 +456,7 @@ func (nm *NodeManager) SendGroupInfo() {
 		nm.logger.Info("no nodes in config, skip sending GroupInfo")
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
-	defer cancel()
+	ctx := context.Background()
 	cfg.GroupInfo(ctx, &nmprotos.GroupInfoMessage{
 		Epoch:   epochVal,
 		GroupID: nm.id,
@@ -478,8 +472,7 @@ func (nm *NodeManager) SendReady(nodeID string) {
 		panic("no nodes in config")
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
-	defer cancel()
+	ctx := context.Background()
 
 	gorumsID, ok := nm.GorumsID(nodeID)
 	if !ok {
