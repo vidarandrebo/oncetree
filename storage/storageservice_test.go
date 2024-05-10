@@ -142,12 +142,11 @@ func writeRandomValuesToNodes(cfg *kvsprotos.Configuration, n int) map[string]ma
 			panic("failed to find node in config")
 		}
 		for key, value := range values {
-			ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
+			ctx := context.Background()
 			_, err := node.Write(ctx, &kvsprotos.WriteRequest{
 				Key:   key,
 				Value: value,
 			})
-			cancel()
 			if err != nil {
 				panic(fmt.Sprintf("failed to write value to node %s", nodeID))
 			}
@@ -254,12 +253,11 @@ func TestStorageService_WriteLocal(t *testing.T) {
 		for _, id := range shouldNotHaveValue {
 			node, exists := storageCfg.Node(id)
 			assert.True(t, exists)
-			ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
+			ctx := context.Background()
 			response, err := node.ReadLocal(ctx, &kvsprotos.ReadLocalRequest{
 				Key:    key,
 				NodeID: "2",
 			})
-			cancel()
 			assert.NotNil(t, err)
 			assert.Equal(t, int64(0), response.GetValue())
 		}
@@ -267,12 +265,11 @@ func TestStorageService_WriteLocal(t *testing.T) {
 		for _, id := range shouldHaveValue {
 			node, exists := storageCfg.Node(id)
 			assert.True(t, exists)
-			ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
+			ctx := context.Background()
 			response, err := node.ReadLocal(ctx, &kvsprotos.ReadLocalRequest{
 				Key:    key,
 				NodeID: "2",
 			})
-			cancel()
 			assert.Nil(t, err)
 			assert.Equal(t, nodesValueForKey(key, nodes, writtenValues), response.GetValue())
 		}
