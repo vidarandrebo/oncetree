@@ -2,6 +2,7 @@ package storage
 
 import (
 	"encoding/csv"
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -35,10 +36,14 @@ func NewRequestMetrics() *RequestMetrics {
 }
 
 func (rm *RequestMetrics) Run(id string) {
+	if flag.Lookup("test.v") != nil {
+		return
+	}
 	fileName := filepath.Join(consts.LogFolder, fmt.Sprintf("replica_%s_request_rates.csv", id))
+	currDir, _ := os.Getwd()
 	file, err := os.Create(fileName)
 	if err != nil {
-		panic("file create error" + err.Error())
+		panic("file create error" + err.Error() + currDir)
 	}
 	defer file.Close()
 	csvWriter := csv.NewWriter(file)
