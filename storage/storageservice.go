@@ -27,10 +27,13 @@ type StorageService struct {
 	eventBus       *eventbus.EventBus
 	gossipSender   *GossipSender
 	configProvider gorumsprovider.StorageConfigProvider
+	requestMetrics *RequestMetrics
 }
 
 func NewStorageService(id string, logger *slog.Logger, nodeManager *nodemanager.NodeManager, eventBus *eventbus.EventBus, configProvider gorumsprovider.StorageConfigProvider) *StorageService {
 	gossipSender := NewGossipSender(logger, configProvider, nodeManager.GorumsID)
+	requestMetrics := NewRequestMetrics()
+	go requestMetrics.Run(id)
 
 	ss := &StorageService{
 		id:             id,
@@ -41,6 +44,7 @@ func NewStorageService(id string, logger *slog.Logger, nodeManager *nodemanager.
 		eventBus:       eventBus,
 		gossipSender:   gossipSender,
 		configProvider: configProvider,
+		requestMetrics: requestMetrics,
 	}
 	eventBus.RegisterHandler(reflect.TypeOf(nmevents.NeighbourReadyEvent{}), func(e any) {
 		if event, ok := e.(nmevents.NeighbourReadyEvent); ok {
@@ -186,26 +190,14 @@ func (ss *StorageService) SendAccept(failedNodeID string) {
 		ss.logger.Debug("got response from accept",
 			slog.Bool("ok", response.GetOK()))
 	}
+	ss.logger.Info("done sending accept messages")
 }
 
 func (ss *StorageService) shareAll(nodeID string) {
 	ss.logger.Info("sharing all values", "id", nodeID)
-	neighbour, ok := ss.nodeManager.Neighbour(nodeID)
+	_, ok := ss.nodeManager.Neighbour(nodeID)
 	if !ok {
 		ss.logger.Error("did not find neighbour", "id", nodeID)
-		return
-	}
-	gorumsConfig, configExists, _ := ss.configProvider.StorageConfig()
-	if !configExists {
-		ss.logger.Error("storageconfig does not exist",
-			slog.String("fn", "ss.shareAll"))
-		return
-	}
-	node, ok := gorumsConfig.Node(neighbour.GorumsID)
-	if !ok {
-		ss.logger.Error(
-			"did not find node in gorums config",
-			slog.Uint64("id", uint64(neighbour.GorumsID)))
 		return
 	}
 	for _, key := range ss.storage.Keys().Values() {
@@ -225,8 +217,7 @@ func (ss *StorageService) shareAll(nodeID string) {
 				slog.Any("err", err))
 			continue
 		}
-		ctx := context.Background()
-		request := &kvsprotos.GossipMessage{
+		message := PerNodeGossip{
 			NodeID:         ss.id,
 			Key:            key,
 			AggValue:       aggValue,
@@ -234,12 +225,7 @@ func (ss *StorageService) shareAll(nodeID string) {
 			LocalValue:     localValue.Value,
 			LocalTimestamp: localValue.Timestamp,
 		}
-		_, err = node.Gossip(ctx, request)
-		if err != nil {
-			ss.logger.Error(
-				"gossip failed",
-				slog.Any("err", err))
-		}
+		ss.gossipSender.Enqueue(message, ss.id, nodeID)
 	}
 	ss.logger.Info(
 		"completed sharing values",

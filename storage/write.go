@@ -10,6 +10,7 @@ import (
 
 // Write RPC is used to set the local value at a given key for a single node
 func (ss *StorageService) Write(ctx gorums.ServerCtx, request *kvsprotos.WriteRequest) (*emptypb.Empty, error) {
+	ss.requestMetrics.CountWrite()
 	ss.logger.Debug("RPC Write",
 		slog.Int64("key", request.GetKey()),
 		slog.Int64("value", request.GetValue()),

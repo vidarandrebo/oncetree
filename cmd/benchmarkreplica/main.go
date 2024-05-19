@@ -5,13 +5,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"github.com/vidarandrebo/oncetree"
 	"github.com/vidarandrebo/oncetree/consts"
 )
 
 func main() {
-	// runtime.GOMAXPROCS(1)
+	runtime.GOMAXPROCS(1)
 	knownAddr := flag.String("knownAddr", "", "IP address of one of the nodes in the network")
 	flag.Parse()
 

@@ -26,6 +26,8 @@ func main() {
 	runtime.GOMAXPROCS(1)
 	time.Sleep(consts.RPCContextTimeout * 3)
 	knownAddr := flag.String("knownAddr", "", "IP address of one of the nodes in the network")
+	writer := flag.Bool("writer", false, "client is writer")
+	reader := flag.Bool("reader", false, "client is reader")
 	nodeToCrashAddr := flag.String("nodeToCrashAddr", "", "IP address of one of the node to crash")
 	isLeader := flag.Bool("isLeader", false, "Is node that crashes nodes")
 	flag.Parse()
@@ -50,8 +52,8 @@ func main() {
 	if !ok {
 		panic("no storage config")
 	}
-	WriteStartValues(1000, benchMarkNodes, cfg)
-	time.Sleep(consts.RPCContextTimeout)
+	WriteStartValues(consts.BenchmarkNumKeys, benchMarkNodes, cfg)
+	time.Sleep(2 * consts.RPCContextTimeout)
 	fmt.Println("start values written")
 
 	numMsg := int64(0)
@@ -60,28 +62,33 @@ func main() {
 	timePerRequest := 1000 * time.Microsecond
 	sleepUnit := 10 * time.Millisecond
 	i := 0
+	hasCrashed := false
 	results := make([]benchmark.Result, 0, n+len(benchMarkNodes))
-	currentOperationType := benchmark.Read
-	for numMsg < 100000 {
+	operationType := benchmark.Read
+	if *writer {
+		fmt.Println("client is writer")
+		operationType = benchmark.Write
+	} else if *reader {
+		fmt.Println("client is reader")
+		operationType = benchmark.Read
+	}
+	for time.Now().Sub(t0) < consts.BenchmarkTime {
 		for _, node := range benchMarkNodes {
-			// fmt.Println("send request", accumulator, time.Now().Sub(startTime))
 			accumulator += timePerRequest
 			gorumsNode, ok := cfg.Node(node.GorumsID)
 			if !ok {
 				panic("no gorums node")
 			}
 			startTime := time.Now()
-			if i%10 == 0 {
-				currentOperationType = benchmark.Write
+			if operationType == benchmark.Write {
 				_, err := gorumsNode.Write(context.Background(), &kvsprotos.WriteRequest{
-					Key:   rand.Int63n(1000),
+					Key:   rand.Int63n(consts.BenchmarkNumKeys),
 					Value: rand.Int63n(1000000),
 				})
 				if err != nil {
 					fmt.Println("write error")
 				}
 			} else {
-				currentOperationType = benchmark.Read
 				_, err := gorumsNode.Read(context.Background(), &kvsprotos.ReadRequest{
 					Key: rand.Int63n(1000),
 				})
@@ -93,25 +100,25 @@ func main() {
 			results = append(results,
 				benchmark.Result{
 					Latency:   endTime.Sub(startTime).Microseconds(),
-					Timestamp: endTime.UnixMicro(),
+					Timestamp: endTime.UnixMilli(),
 					ID:        node.ID,
-					Type:      currentOperationType,
 				})
 
-			for time.Now().Sub(t0) < accumulator {
-				time.Sleep(sleepUnit)
-			}
 			numMsg++
-			if numMsg == 20000 && *isLeader {
+			if *isLeader && !hasCrashed && endTime.Sub(t0) > 20*time.Second {
 				nodeCfg, ok := gorumsProvider.NodeConfig()
 				if !ok {
 					panic("no gorums node")
 				}
 				CrashNode(nodeCfg, benchMarkNodes[nodeToCrashId].GorumsID)
 				delete(benchMarkNodes, nodeToCrashId)
+				hasCrashed = true
 				gorumsProvider.ResetWithNewNodes(benchmark.GorumsMap(benchMarkNodes))
 				cfg, ok, _ = gorumsProvider.StorageConfig()
 				break
+			}
+			for time.Now().Sub(t0) < accumulator {
+				time.Sleep(sleepUnit)
 			}
 		}
 		i++
@@ -122,7 +129,7 @@ func main() {
 	if err != nil {
 		panic("failed to get hostname")
 	}
-	benchmark.WriteResultsToDisk(results, id)
+	benchmark.WriteResultsToDisk(results, id, operationType)
 }
 
 func CrashNode(cfg *nodeprotos.Configuration, gorumsID uint32) {
@@ -172,8 +179,7 @@ func mapOnceTreeNodes(provider *gorumsprovider.GorumsProvider, knownAddr string)
 	if !ok {
 		panic("failed to get node")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
-	defer cancel()
+	ctx := context.Background()
 	response, err := node.Nodes(ctx, &nodeprotos.NodesRequest{Origin: id})
 	if err != nil {
 		panic("failed to get nodes")
@@ -205,8 +211,7 @@ func getNodeToCrashID(provider *gorumsprovider.GorumsProvider, nodeToCrashAddr s
 	if !ok {
 		panic("failed to get node")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), consts.RPCContextTimeout)
-	defer cancel()
+	ctx := context.Background()
 	response, err := node.NodeID(ctx, &emptypb.Empty{})
 	if err != nil {
 		panic("failed to get id of node to crash")

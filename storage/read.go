@@ -9,6 +9,7 @@ import (
 )
 
 func (ss *StorageService) Read(ctx gorums.ServerCtx, request *kvsprotos.ReadRequest) (*kvsprotos.ReadResponse, error) {
+	ss.requestMetrics.CountRead()
 	value, err := ss.storage.ReadValue(request.Key)
 	if err != nil {
 		return &kvsprotos.ReadResponse{Value: 0}, err

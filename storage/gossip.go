@@ -9,6 +9,7 @@ import (
 )
 
 func (ss *StorageService) Gossip(ctx gorums.ServerCtx, request *kvsprotos.GossipMessage) (*emptypb.Empty, error) {
+	ss.requestMetrics.CountGossip()
 	ss.logger.Debug(
 		"RPC Gossip",
 		slog.Int64("key", request.GetKey()),
