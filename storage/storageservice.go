@@ -32,6 +32,8 @@ type StorageService struct {
 
 func NewStorageService(id string, logger *slog.Logger, nodeManager *nodemanager.NodeManager, eventBus *eventbus.EventBus, configProvider gorumsprovider.StorageConfigProvider) *StorageService {
 	gossipSender := NewGossipSender(logger, configProvider, nodeManager.GorumsID)
+	requestMetrics := NewRequestMetrics()
+	go requestMetrics.Run(id)
 
 	ss := &StorageService{
 		id:             id,
@@ -42,7 +44,7 @@ func NewStorageService(id string, logger *slog.Logger, nodeManager *nodemanager.
 		eventBus:       eventBus,
 		gossipSender:   gossipSender,
 		configProvider: configProvider,
-		requestMetrics: NewRequestMetrics(),
+		requestMetrics: requestMetrics,
 	}
 	eventBus.RegisterHandler(reflect.TypeOf(nmevents.NeighbourReadyEvent{}), func(e any) {
 		if event, ok := e.(nmevents.NeighbourReadyEvent); ok {
