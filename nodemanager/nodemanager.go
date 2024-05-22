@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net"
 	"reflect"
 	"slices"
 	"sync"
@@ -395,9 +396,14 @@ func (nm *NodeManager) Parent() *Neighbour {
 func (nm *NodeManager) SendJoin(knownAddr string) {
 	nm.joinMut.Lock()
 	defer nm.joinMut.Unlock()
-	if knownAddr == "" {
+	addr, port, _ := net.SplitHostPort(knownAddr)
+	nm.logger.Info("sending join to",
+		slog.String("addr", addr),
+		slog.String("port", port))
+	if port == "" {
 		return
 	}
+
 	joined := false
 	for !joined {
 		knownNodeID, _ := uuid.NewV7()

@@ -29,19 +29,7 @@ import (
 
 // structure same as in testing_node.go
 var (
-	nodeIDs   = []string{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"}
-	nodeAddrs = []string{
-		":9080",
-		":9081",
-		":9082",
-		":9083",
-		":9084",
-		":9085",
-		":9086",
-		":9087",
-		":9088",
-		":9089",
-	}
+	nodeIDs       = []string{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"}
 	gorumsNodeMap = map[string]uint32{
 		":9080": 0,
 		":9081": 1,

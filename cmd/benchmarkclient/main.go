@@ -25,14 +25,14 @@ import (
 func main() {
 	runtime.GOMAXPROCS(1)
 	time.Sleep(consts.RPCContextTimeout * 3)
-	knownAddr := flag.String("knownAddr", "", "IP address of one of the nodes in the network")
+	knownAddr := flag.String("known-address", "", "IP address of one of the nodes in the network")
 	writer := flag.Bool("writer", false, "client is writer")
 	reader := flag.Bool("reader", false, "client is reader")
-	nodeToCrashAddr := flag.String("nodeToCrashAddr", "", "IP address of one of the node to crash")
-	isLeader := flag.Bool("isLeader", false, "Is node that crashes nodes")
+	nodeToCrashAddr := flag.String("node-to-crash-address", "", "IP address of one of the node to crash")
+	isLeader := flag.Bool("is-leader", false, "Is node that crashes nodes")
 	flag.Parse()
 	fmt.Println("hello from client")
-	fmt.Printf("knownAddr: %s\n", *knownAddr)
+	fmt.Printf("known-address: %s\n", *knownAddr)
 	n := 100000
 
 	fmt.Println("isLeader:", *isLeader)

@@ -12,7 +12,7 @@ services:
       context: ./
       dockerfile: client.Dockerfile
     entrypoint: ./client
-    command: --knownAddr genesis:8080 --nodeToCrashAddr crash-replica:8080 --isLeader --writer
+    command: --known-address genesis:8080 --node-to-crash-address crash-replica:8080 --is-leader --writer
     image: benchmarkclient
     tty: true
     networks:
@@ -29,7 +29,7 @@ services:
       context: ./
       dockerfile: client.Dockerfile
     entrypoint: ./client
-    command: --knownAddr genesis:8080 --nodeToCrashAddr crash-replica:8080 --writer
+    command: --known-address genesis:8080 --node-to-crash-address crash-replica:8080 --writer
     image: benchmarkclient
     tty: true
     networks:
@@ -49,7 +49,7 @@ services:
       context: ./
       dockerfile: client.Dockerfile
     entrypoint: ./client
-    command: --knownAddr genesis:8080 --nodeToCrashAddr crash-replica:8080 --reader
+    command: --known-address genesis:8080 --node-to-crash-address crash-replica:8080 --reader
     image: benchmarkclient
     tty: true
     networks:
@@ -79,7 +79,7 @@ services:
       context: ./
       dockerfile: replica.Dockerfile
     entrypoint: ./replica
-    command: --knownAddr genesis:8080
+    command: --known-address genesis:8080
     image: benchmarkreplica
     tty: true
     networks:
@@ -94,7 +94,7 @@ services:
       context: ./
       dockerfile: replica.Dockerfile
     entrypoint: ./replica
-    command: --knownAddr genesis:8080
+    command: --known-address genesis:8080
     image: benchmarkreplica
     tty: true
     networks:

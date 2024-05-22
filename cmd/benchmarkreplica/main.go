@@ -13,7 +13,9 @@ import (
 
 func main() {
 	runtime.GOMAXPROCS(1)
-	knownAddr := flag.String("knownAddr", "", "IP address of one of the nodes in the network")
+	knownAddress := flag.String("known-address", "", "IP address of one of the nodes in the network")
+	address := flag.String("address", "", "IP address to serve on")
+	port := flag.String("port", "", "Port to serve on")
 	flag.Parse()
 
 	id, err := os.Hostname()
@@ -27,8 +29,17 @@ func main() {
 	}
 	defer file.Close()
 
-	// Address is a docker dns trick
-	node := oncetree.NewNode(id, fmt.Sprintf("%s:8080", id), file)
+	// id is passed as the address, only works where hostname lookup is configured
+	serveAddress := *address
+	if serveAddress == "" {
+		serveAddress = id
+	}
+	servePort := *port
+	if servePort == "" {
+		servePort = "8080"
+	}
 
-	node.Run(*knownAddr, nil)
+	node := oncetree.NewNode(id, serveAddress, servePort, file)
+
+	node.Run(*knownAddress, nil)
 }
