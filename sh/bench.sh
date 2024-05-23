@@ -1,3 +1,4 @@
+#!/bin/bash
 for x in bbchain{19..27}; do ssh $x mkdir -p logs; done
 echo bbchain19
 ssh bbchain19 "nohup ./bin/benchmarkreplica 1> /dev/null 2> /dev/null &"

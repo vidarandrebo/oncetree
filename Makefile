@@ -51,8 +51,18 @@ protos: $(proto_go) $(gorums_go) format
 
 .PHONY: publish
 publish: build
-	./sh/push_bbchain.sh
+	ssh ssh4.ux.uis.no mkdir -p oncetree
+	rsync -aP bin sh ssh4.ux.uis.no:oncetree/
+	ssh ssh4.ux.uis.no ./oncetree/sh/publish_bbchain.sh
 
 .PHONY: clean_remote
 clean_remote:
-	./sh/clean.sh
+	ssh ssh4.ux.uis.no ./oncetree/sh/clean.sh
+
+.PHONY: bench_remote
+bench_remote:
+	ssh ssh4.ux.uis.no ./oncetree/sh/bench.sh
+
+.PHONY: stop_remote
+stop_remote:
+	ssh ssh4.ux.uis.no ./oncetree/sh/stop.sh
