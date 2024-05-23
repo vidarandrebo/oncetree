@@ -151,7 +151,6 @@ mainLoop:
 			break mainLoop
 		}
 	}
-	wg.Wait()
 	n.gorumsServer.Stop()
 	n.logger.Info("exiting", "msg", nodeExitMessage)
 }

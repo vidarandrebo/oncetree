@@ -421,6 +421,80 @@ func TestStorageService_RecoverValuesLeaf(t *testing.T) {
 	wg.Wait()
 }
 
+// TestStorageService_RecoverValueLeaf crashes the root node, then checks if the values are inherited
+// and distributed as a local value to its group
+/*
+				0
+               / \
+              1   2
+            / |   | \
+           3  4   5  6
+         / |   \
+		7  8    9
+*/
+// Will be converted to:
+/*
+              1
+            / | \
+           3  4  2
+         / |  |  | \
+		7  8  9	 5  6
+*/
+func TestStorageService_RecoverValuesRoot(t *testing.T) {
+	shouldHaveValue := []uint32{3, 4, 2}
+	shouldNotHaveValue := []uint32{1, 5, 6, 7, 8, 9}
+
+	testNodes, wg := oncetree.StartTestNodes(false)
+	gorumsProvider := gorumsprovider.New(logger)
+	storageCfg, _ := storageConfig(gorumsProvider)
+	nodeCfg, _ := nodeConfig(gorumsProvider)
+
+	valuesWritten := writeRandomValuesToNodes(storageCfg, 100)
+	joinedNodes := []string{"0", "1"}
+	keys := keysFromValueMapForNodes(joinedNodes, valuesWritten)
+
+	time.Sleep(consts.TestWaitAfterWrite)
+
+	// crash node 0
+	node0, exists := nodeCfg.Node(0)
+	assert.True(t, exists)
+	ctx := context.Background()
+	_, err := node0.Crash(ctx, &emptypb.Empty{})
+	assert.Nil(t, err)
+	time.Sleep(consts.HeartbeatSendInterval * consts.FailureDetectorStrikes * 2)
+
+	for _, key := range keys.Values() {
+		for _, id := range shouldNotHaveValue {
+			node, exists := storageCfg.Node(id)
+			assert.True(t, exists)
+			ctx = context.Background()
+			response, err := node.ReadLocal(ctx, &kvsprotos.ReadLocalRequest{
+				Key:    key,
+				NodeID: "1",
+			})
+			assert.NotNil(t, err)
+			assert.Equal(t, int64(0), response.GetValue())
+		}
+
+		for _, id := range shouldHaveValue {
+			node, exists := storageCfg.Node(id)
+			assert.True(t, exists)
+			ctx = context.Background()
+			response, err := node.ReadLocal(ctx, &kvsprotos.ReadLocalRequest{
+				Key:    key,
+				NodeID: "1",
+			})
+			assert.Nil(t, err)
+			assert.Equal(t, nodesValueForKey(key, joinedNodes, valuesWritten), response.GetValue())
+		}
+	}
+
+	for _, node := range testNodes {
+		node.Stop("stopped by test")
+	}
+	wg.Wait()
+}
+
 func BenchmarkStorageService_Write(t *testing.B) {
 	// runtime.GOMAXPROCS(2)
 	testNodes, wg := oncetree.StartTestNodes(true)
