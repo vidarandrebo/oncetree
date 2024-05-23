@@ -35,7 +35,7 @@ func main() {
 	fmt.Printf("known-address: %s\n", *knownAddr)
 	n := 100000
 
-	fmt.Println("isLeader:", *isLeader)
+	fmt.Println("is-leader:", *isLeader)
 
 	gorumsProvider := gorumsprovider.New(slog.Default())
 	nodeToCrashId := getNodeToCrashID(gorumsProvider, *nodeToCrashAddr)

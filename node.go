@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"net"
 	"os"
-	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -17,7 +16,6 @@ import (
 	"github.com/vidarandrebo/oncetree/consts"
 	"github.com/vidarandrebo/oncetree/eventbus"
 	"github.com/vidarandrebo/oncetree/failuredetector"
-	"github.com/vidarandrebo/oncetree/failuredetector/fdevents"
 	"github.com/vidarandrebo/oncetree/gorumsprovider"
 	"github.com/vidarandrebo/oncetree/nodemanager"
 	fdprotos "github.com/vidarandrebo/oncetree/protos/failuredetector"
@@ -54,9 +52,6 @@ func NewNode(id string, rpcAddr string, rpcPort string, logFile io.Writer) *Node
 		Level: consts.LogLevel,
 	}
 	logWriter := io.MultiWriter(logFile, os.Stderr)
-	//	if logFile == io.Discard {
-	//		logWriter = io.Discard
-	//	}
 	logHandler := slog.NewTextHandler(logWriter, &logHandlerOpts)
 
 	address := fmt.Sprintf("%s:%s", rpcAddr, rpcPort)
@@ -91,18 +86,6 @@ func NewNode(id string, rpcAddr string, rpcPort string, logFile io.Writer) *Node
 }
 
 func (n *Node) setupEventHandlers() {
-	n.eventbus.RegisterHandler(
-		reflect.TypeOf(fdevents.NodeFailedEvent{}),
-		func(e any) {
-			if event, ok := e.(fdevents.NodeFailedEvent); ok {
-				n.nodeFailedHandler(event)
-			}
-		},
-	)
-}
-
-func (n *Node) nodeFailedHandler(e fdevents.NodeFailedEvent) {
-	// n.logger.Printf("node with id %s has failed", e.GroupID)
 }
 
 func (n *Node) startGorumsServer(addr string) {

@@ -128,6 +128,7 @@ func (nm *NodeManager) SendPrepare(e fdevents.NodeFailedEvent) {
 		nm.blackList.Add(failedNode.ID)
 		nm.recoveryProcess.stop()
 		nm.eventBus.PushTask(nm.SendGroupInfo)
+		nm.eventBus.PushEvent(nmevents.NewTreeRecoveredEvent(failedNode.ID))
 		return
 	}
 	cfg, err := nm.gorumsProvider.CustomNodeManagerConfig(nm.GorumsRecoveryMap())
