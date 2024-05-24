@@ -403,12 +403,12 @@ func (nm *NodeManager) SendJoin(knownAddr string) {
 	nm.joinMut.Lock()
 	defer nm.joinMut.Unlock()
 	addr, port, _ := net.SplitHostPort(knownAddr)
-	nm.logger.Info("sending join to",
-		slog.String("addr", addr),
-		slog.String("port", port))
 	if port == "" {
 		return
 	}
+	nm.logger.Info("sending join to",
+		slog.String("addr", addr),
+		slog.String("port", port))
 
 	joined := false
 	for !joined {

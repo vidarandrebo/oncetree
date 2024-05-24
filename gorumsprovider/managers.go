@@ -28,7 +28,6 @@ func newGorumsManagers() *managers {
 	opts := []gorums.ManagerOption{
 		gorums.WithDialTimeout(consts.GorumsDialTimeout),
 		gorums.WithGrpcDialOptions(
-			grpc.WithBlock(),
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
 		),
 	}
