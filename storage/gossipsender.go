@@ -27,9 +27,9 @@ func NewGossipSender(logger *slog.Logger, configProvider gorumsprovider.StorageC
 
 func (gs *GossipSender) Enqueue(message PerNodeGossip, origin string, target string) {
 	gs.mut.Lock()
-	defer gs.mut.Unlock()
 	gs.ensureWorkerExists(origin, target)
 	worker, ok := gs.workers[origin][target]
+	gs.mut.Unlock()
 	if !ok {
 		panic("worker not found: " + origin)
 	}

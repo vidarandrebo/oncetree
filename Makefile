@@ -57,12 +57,20 @@ publish: build
 
 .PHONY: clean_remote
 clean_remote:
-	ssh ssh4.ux.uis.no ./oncetree/sh/clean.sh
+	-ssh ssh4.ux.uis.no ./oncetree/sh/clean.sh
 
 .PHONY: bench_remote
-bench_remote:
+bench_remote: stop_remote clean_remote publish
 	ssh ssh4.ux.uis.no ./oncetree/sh/bench.sh
+	ssh ssh4.ux.uis.no ./oncetree/sh/client.sh
 
 .PHONY: stop_remote
 stop_remote:
-	ssh ssh4.ux.uis.no ./oncetree/sh/stop.sh
+	-ssh ssh4.ux.uis.no ./oncetree/sh/stop.sh
+
+.PHONY: get_logs
+get_logs:
+	-rm -r writes reads
+	ssh ssh4.ux.uis.no ./oncetree/sh/get_logs.sh
+	rsync -aP ssh4.ux.uis.no:oncetree/writes ./
+	rsync -aP ssh4.ux.uis.no:oncetree/reads ./

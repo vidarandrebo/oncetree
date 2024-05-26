@@ -4,10 +4,11 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"math/rand"
 	"os"
-	"runtime"
+	"path/filepath"
 	"time"
 
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -23,19 +24,37 @@ import (
 )
 
 func main() {
-	runtime.GOMAXPROCS(1)
+	id, err := os.Hostname()
+	if err != nil {
+		panic("could not get hostname")
+	}
+	fileName := filepath.Join(consts.LogFolder, fmt.Sprintf("client_%s.log", id))
+	file, err := os.OpenFile(fileName, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o666)
+	if err != nil {
+		panic(err)
+	}
+	defer file.Close()
+	logHandlerOpts := slog.HandlerOptions{
+		Level: consts.LogLevel,
+	}
+	logWriter := io.MultiWriter(file, os.Stderr)
+	logHandler := slog.NewTextHandler(logWriter, &logHandlerOpts)
+
+	logger := slog.New(logHandler).With(slog.Group("client", slog.String("id", id)))
+
+	// runtime.GOMAXPROCS(1)
 	time.Sleep(consts.RPCContextTimeout * 3)
 	knownAddr := flag.String("known-address", "", "IP address of one of the nodes in the network")
 	writer := flag.Bool("writer", false, "client is writer")
 	reader := flag.Bool("reader", false, "client is reader")
 	nodeToCrashAddr := flag.String("node-to-crash-address", "", "IP address of one of the node to crash")
-	isLeader := flag.Bool("is-leader", false, "Is node that crashes nodes")
+	leader := flag.Bool("leader", false, "Is node that crashes nodes")
 	flag.Parse()
-	fmt.Println("hello from client")
-	fmt.Printf("known-address: %s\n", *knownAddr)
+	logger.Info("hello from client")
+	logger.Info("known-address", slog.String("value", *knownAddr))
 	n := 100000
 
-	fmt.Println("is-leader:", *isLeader)
+	fmt.Println("is-leader:", *leader)
 
 	gorumsProvider := gorumsprovider.New(slog.Default())
 	nodeToCrashId := getNodeToCrashID(gorumsProvider, *nodeToCrashAddr)
@@ -43,18 +62,14 @@ func main() {
 	gorumsProvider.Reset()
 	benchMarkNodes := mapOnceTreeNodes(gorumsProvider, *knownAddr)
 
-	// all leader will not write to the node that should crash.
-	if !*isLeader {
-		delete(benchMarkNodes, nodeToCrashId)
-	}
 	gorumsProvider.ResetWithNewNodes(benchmark.GorumsMap(benchMarkNodes))
-	cfg, ok, _ := gorumsProvider.StorageConfig()
+	storageCfg, ok, _ := gorumsProvider.StorageConfig()
 	if !ok {
 		panic("no storage config")
 	}
-	WriteStartValues(consts.BenchmarkNumKeys, benchMarkNodes, cfg)
+	WriteStartValues(consts.BenchmarkNumKeys, benchMarkNodes, storageCfg)
 	time.Sleep(2 * consts.RPCContextTimeout)
-	fmt.Println("start values written")
+	logger.Info("start values written")
 
 	numMsg := int64(0)
 	accumulator := 0 * time.Second
@@ -66,56 +81,53 @@ func main() {
 	results := make([]benchmark.Result, 0, n+len(benchMarkNodes))
 	operationType := benchmark.Read
 	if *writer {
-		fmt.Println("client is writer")
+		logger.Info("client is writer")
 		operationType = benchmark.Write
 	} else if *reader {
-		fmt.Println("client is reader")
+		logger.Info("client is reader")
 		operationType = benchmark.Read
 	}
+	clients := make([]benchmark.IClient, 0)
+	for _, node := range benchMarkNodes {
+		cfg, err := gorumsProvider.CustomStorageConfig(map[string]uint32{
+			node.Address: node.GorumsID,
+		})
+		if err != nil {
+			panic(err)
+		}
+		if *writer {
+			clients = append(clients, benchmark.NewWriter(cfg, 1000, node.ID))
+		} else {
+			clients = append(clients, benchmark.NewReader(cfg, 1000, node.ID))
+		}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	for _, client := range clients {
+		client.Run(ctx)
+	}
+	numSkips := 0
 	for time.Now().Sub(t0) < consts.BenchmarkTime {
-		for _, node := range benchMarkNodes {
+		for _, client := range clients {
+			started := client.Send()
+			if !started {
+				numSkips++
+				if numSkips > len(benchMarkNodes) {
+					time.Sleep(sleepUnit)
+				}
+				// logger.Info("skipping")
+				continue
+			}
+			numSkips = 0
 			accumulator += timePerRequest
-			gorumsNode, ok := cfg.Node(node.GorumsID)
-			if !ok {
-				panic("no gorums node")
-			}
-			startTime := time.Now()
-			if operationType == benchmark.Write {
-				_, err := gorumsNode.Write(context.Background(), &kvsprotos.WriteRequest{
-					Key:   rand.Int63n(consts.BenchmarkNumKeys),
-					Value: rand.Int63n(1000000),
-				})
-				if err != nil {
-					fmt.Println("write error")
-				}
-			} else {
-				_, err := gorumsNode.Read(context.Background(), &kvsprotos.ReadRequest{
-					Key: rand.Int63n(1000),
-				})
-				if err != nil {
-					fmt.Println("read error: value not found", err)
-				}
-			}
-			endTime := time.Now()
-			results = append(results,
-				benchmark.Result{
-					Latency:   endTime.Sub(startTime).Microseconds(),
-					Timestamp: endTime.UnixMilli(),
-					ID:        node.ID,
-				})
 
 			numMsg++
-			if *isLeader && !hasCrashed && endTime.Sub(t0) > 20*time.Second {
+			if *leader && !hasCrashed && time.Now().Sub(t0) > 20*time.Second {
 				nodeCfg, ok := gorumsProvider.NodeConfig()
 				if !ok {
 					panic("no gorums node")
 				}
 				CrashNode(nodeCfg, benchMarkNodes[nodeToCrashId].GorumsID)
-				delete(benchMarkNodes, nodeToCrashId)
 				hasCrashed = true
-				gorumsProvider.ResetWithNewNodes(benchmark.GorumsMap(benchMarkNodes))
-				cfg, ok, _ = gorumsProvider.StorageConfig()
-				break
 			}
 			for time.Now().Sub(t0) < accumulator {
 				time.Sleep(sleepUnit)
@@ -123,12 +135,16 @@ func main() {
 		}
 		i++
 	}
-	fmt.Println(time.Now().Sub(t0).Milliseconds()-accumulator.Milliseconds(), "ms too slow")
-	fmt.Println(results[0])
-	id, err := os.Hostname()
-	if err != nil {
-		panic("failed to get hostname")
+	logger.Info("time to slow",
+		slog.Int64("ms", time.Now().Sub(t0).Milliseconds()-accumulator.Milliseconds()))
+	time.Sleep(time.Second)
+	cancel()
+	for _, client := range clients {
+		clientResult := client.GetResults()
+		logger.Info("join client", slog.Int("num msg", len(clientResult)))
+		results = append(results, clientResult...)
 	}
+	fmt.Println(results[0])
 	benchmark.WriteResultsToDisk(results, id, operationType)
 }
 
@@ -145,8 +161,13 @@ func CrashNode(cfg *nodeprotos.Configuration, gorumsID uint32) {
 }
 
 func WriteStartValues(n int64, benchMarkNodes map[string]benchmark.Node, cfg *kvsprotos.Configuration) {
+	accumulator := 0 * time.Second
+	timePerRequest := 1000 * time.Microsecond
+	t0 := time.Now()
+	sleepUnit := 10 * time.Millisecond
 	for i := int64(0); i < n; i++ {
 		for _, node := range benchMarkNodes {
+			accumulator += timePerRequest
 			gorumsNode, ok := cfg.Node(node.GorumsID)
 			if !ok {
 				panic("no gorums node")
@@ -158,7 +179,9 @@ func WriteStartValues(n int64, benchMarkNodes map[string]benchmark.Node, cfg *kv
 			if err != nil {
 				panic(fmt.Sprintf("write error: %v", err))
 			}
-			time.Sleep(1 * time.Millisecond)
+			for time.Now().Sub(t0) < accumulator {
+				time.Sleep(sleepUnit)
+			}
 		}
 	}
 }

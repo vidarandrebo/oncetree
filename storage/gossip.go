@@ -53,7 +53,7 @@ func (ss *StorageService) Gossip(ctx gorums.ServerCtx, request *kvsprotos.Gossip
 	}
 
 	if updated {
-		go ss.sendGossip(request.NodeID, request.GetKey(), valuesToGossip, writeTs, localValue)
+		ss.sendGossip(request.NodeID, request.GetKey(), valuesToGossip, writeTs, localValue)
 	}
 	return &emptypb.Empty{}, nil
 }

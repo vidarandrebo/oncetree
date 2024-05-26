@@ -12,7 +12,7 @@ services:
       context: ./
       dockerfile: client.Dockerfile
     entrypoint: ./client
-    command: --known-address genesis:8080 --node-to-crash-address crash-replica:8080 --is-leader --writer
+    command: --known-address genesis:8080 --node-to-crash-address crash-replica:8080 --leader --writer
     image: benchmarkclient
     tty: true
     networks:
