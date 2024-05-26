@@ -7,8 +7,6 @@ gorums_go := $(proto_src:%.proto=%_gorums.pb.go)
 
 .PHONY: build
 build: protos logs
-	go build -o bin/oncetreenodes cmd/oncetreenodes/main.go
-	go build -o bin/oncetreeclient cmd/oncetreeclient/main.go
 	go build -o bin/benchmarkclient cmd/benchmarkclient/main.go
 	go build -o bin/benchmarkreplica cmd/benchmarkreplica/main.go
 
@@ -49,3 +47,30 @@ protos: $(proto_go) $(gorums_go) format
 		--go_out=paths=source_relative:. \
 		--gorums_out=paths=source_relative:. \
 		$<
+
+
+.PHONY: publish
+publish: build
+	ssh ssh4.ux.uis.no mkdir -p oncetree
+	rsync -aP bin sh ssh4.ux.uis.no:oncetree/
+	ssh ssh4.ux.uis.no ./oncetree/sh/publish_bbchain.sh
+
+.PHONY: clean_remote
+clean_remote:
+	-ssh ssh4.ux.uis.no ./oncetree/sh/clean.sh
+
+.PHONY: bench_remote
+bench_remote: stop_remote clean_remote publish
+	ssh ssh4.ux.uis.no ./oncetree/sh/bench.sh
+	ssh ssh4.ux.uis.no ./oncetree/sh/client.sh
+
+.PHONY: stop_remote
+stop_remote:
+	-ssh ssh4.ux.uis.no ./oncetree/sh/stop.sh
+
+.PHONY: get_logs
+get_logs:
+	-rm -r writes reads
+	ssh ssh4.ux.uis.no ./oncetree/sh/get_logs.sh
+	rsync -aP ssh4.ux.uis.no:oncetree/writes ./
+	rsync -aP ssh4.ux.uis.no:oncetree/reads ./

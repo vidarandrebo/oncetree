@@ -62,6 +62,8 @@ func (nm *NodeManager) Prepare(ctx gorums.ServerCtx, request *nmprotos.PrepareMe
 	nm.logger.Info("failed node has no parent, using lowest ID node as leader")
 	memberIDs := node.GroupMemberIDs()
 	sort.Strings(memberIDs)
+	nm.logger.Info("Printing members",
+		slog.Any("members", memberIDs))
 	rank := slices.Index(memberIDs, request.GetNodeID())
 	if rank == 0 {
 		nm.logger.Info("member has lowest ID, send leader promise",

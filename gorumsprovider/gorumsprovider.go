@@ -151,3 +151,10 @@ func (gp *GorumsProvider) StorageConfig() (*kvsprotos.Configuration, bool, int) 
 	}
 	return gp.configurations.kvsConfig, true, gp.epoch
 }
+
+func (gp *GorumsProvider) CustomStorageConfig(gorumsMap map[string]uint32) (*kvsprotos.Configuration, error) {
+	gp.mut.RLock()
+	defer gp.mut.RUnlock()
+	cfg, err := gp.managers.newKVSConfig(gorumsMap)
+	return cfg, err
+}

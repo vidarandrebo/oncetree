@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"net"
 	"os"
-	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -17,7 +16,6 @@ import (
 	"github.com/vidarandrebo/oncetree/consts"
 	"github.com/vidarandrebo/oncetree/eventbus"
 	"github.com/vidarandrebo/oncetree/failuredetector"
-	"github.com/vidarandrebo/oncetree/failuredetector/fdevents"
 	"github.com/vidarandrebo/oncetree/gorumsprovider"
 	"github.com/vidarandrebo/oncetree/nodemanager"
 	fdprotos "github.com/vidarandrebo/oncetree/protos/failuredetector"
@@ -31,6 +29,7 @@ import (
 type Node struct {
 	id              string
 	rpcAddr         string
+	rpcPort         string
 	gorumsServer    *gorums.Server
 	nodeManager     *nodemanager.NodeManager
 	logger          *slog.Logger
@@ -45,7 +44,7 @@ func (n *Node) NodeID(ctx gorums.ServerCtx, request *emptypb.Empty) (response *n
 	return &nodeprotos.IDResponse{ID: n.id}, nil
 }
 
-func NewNode(id string, rpcAddr string, logFile io.Writer) *Node {
+func NewNode(id string, rpcAddr string, rpcPort string, logFile io.Writer) *Node {
 	if id == "" {
 		id = uuid.New().String()
 	}
@@ -53,15 +52,14 @@ func NewNode(id string, rpcAddr string, logFile io.Writer) *Node {
 		Level: consts.LogLevel,
 	}
 	logWriter := io.MultiWriter(logFile, os.Stderr)
-	//	if logFile == io.Discard {
-	//		logWriter = io.Discard
-	//	}
 	logHandler := slog.NewTextHandler(logWriter, &logHandlerOpts)
+
+	address := fmt.Sprintf("%s:%s", rpcAddr, rpcPort)
 
 	logger := slog.New(logHandler).With(slog.Group("node", slog.String("id", id)))
 	eventBus := eventbus.New(logger)
 	gorumsProvider := gorumsprovider.New(logger)
-	nodeManager := nodemanager.New(id, rpcAddr, logger, eventBus, gorumsProvider)
+	nodeManager := nodemanager.New(id, address, logger, eventBus, gorumsProvider)
 	failureDetector := failuredetector.New(id, logger, nodeManager, eventBus, gorumsProvider)
 	storageService := storage.NewStorageService(id, logger, nodeManager, eventBus, gorumsProvider)
 	ips, err := net.LookupIP(strings.Split(rpcAddr, ":")[0])
@@ -74,8 +72,9 @@ func NewNode(id string, rpcAddr string, logFile io.Writer) *Node {
 	}
 
 	return &Node{
-		rpcAddr:         rpcAddr,
 		id:              id,
+		rpcAddr:         rpcAddr,
+		rpcPort:         rpcPort,
 		eventbus:        eventBus,
 		nodeManager:     nodeManager,
 		logger:          logger.With(slog.Group("node", slog.String("module", "node"))),
@@ -87,21 +86,11 @@ func NewNode(id string, rpcAddr string, logFile io.Writer) *Node {
 }
 
 func (n *Node) setupEventHandlers() {
-	n.eventbus.RegisterHandler(
-		reflect.TypeOf(fdevents.NodeFailedEvent{}),
-		func(e any) {
-			if event, ok := e.(fdevents.NodeFailedEvent); ok {
-				n.nodeFailedHandler(event)
-			}
-		},
-	)
-}
-
-func (n *Node) nodeFailedHandler(e fdevents.NodeFailedEvent) {
-	// n.logger.Printf("node with id %s has failed", e.GroupID)
 }
 
 func (n *Node) startGorumsServer(addr string) {
+	n.logger.Info("serving at",
+		slog.String("addr", addr))
 	n.gorumsServer = gorums.NewServer()
 
 	fdprotos.RegisterFailureDetectorServiceServer(n.gorumsServer, n.failureDetector)
@@ -136,7 +125,10 @@ func (n *Node) Run(knownAddr string, readyCallBack func()) {
 	wg := sync.WaitGroup{}
 	defer cancel()
 
-	n.startGorumsServer(n.rpcAddr)
+	// serve on all addresses
+	serveAddr := fmt.Sprintf("%s:%s", "", n.rpcPort)
+
+	n.startGorumsServer(serveAddr)
 	n.setupEventHandlers()
 	n.nodeManager.SendJoin(knownAddr)
 
@@ -159,7 +151,6 @@ mainLoop:
 			break mainLoop
 		}
 	}
-	wg.Wait()
 	n.gorumsServer.Stop()
 	n.logger.Info("exiting", "msg", nodeExitMessage)
 }
@@ -185,7 +176,8 @@ func (n *Node) Crash(ctx gorums.ServerCtx, request *emptypb.Empty) (response *em
 
 func (n *Node) Nodes(ctx gorums.ServerCtx, request *nodeprotos.NodesRequest) (*nodeprotos.NodesResponse, error) {
 	nodeMap := make(map[string]string)
-	nodeMap[n.id] = n.rpcAddr
+
+	nodeMap[n.id] = fmt.Sprintf("%s:%s", n.rpcAddr, n.rpcPort)
 	neighbours := n.nodeManager.Neighbours()
 	cfg, ok := n.nodeManager.NodeConfig()
 	if !ok {

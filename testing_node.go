@@ -1,6 +1,7 @@
 package oncetree
 
 import (
+	"fmt"
 	"io"
 	"sync"
 	"time"
@@ -12,16 +13,16 @@ func StartTestNodes(discardLogs bool) (map[string]*Node, *sync.WaitGroup) {
 	var (
 		nodeIDs = []string{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"}
 		nodeMap = map[string]string{
-			"0": ":9080",
-			"1": ":9081",
-			"2": ":9082",
-			"3": ":9083",
-			"4": ":9084",
-			"5": ":9085",
-			"6": ":9086",
-			"7": ":9087",
-			"8": ":9088",
-			"9": ":9089",
+			"0": "9080",
+			"1": "9081",
+			"2": "9082",
+			"3": "9083",
+			"4": "9084",
+			"5": "9085",
+			"6": "9086",
+			"7": "9087",
+			"8": "9088",
+			"9": "9089",
 		}
 	)
 	var readyWg sync.WaitGroup
@@ -32,7 +33,7 @@ func StartTestNodes(discardLogs bool) (map[string]*Node, *sync.WaitGroup) {
 		readyWg.Add(1)
 		id := id
 		wg.Add(1)
-		newNode := NewNode(id, nodeMap[id], io.Discard)
+		newNode := NewNode(id, "localhost", nodeMap[id], io.Discard)
 		mut.Lock()
 		nodes[id] = newNode
 		mut.Unlock()
@@ -40,7 +41,11 @@ func StartTestNodes(discardLogs bool) (map[string]*Node, *sync.WaitGroup) {
 			mut.Lock()
 			node := nodes[id]
 			mut.Unlock()
-			node.Run(GetParentFromNodeMap(id, nodeIDs, nodeMap), readyWg.Done)
+			node.Run(
+				fmt.Sprintf("%s:%s",
+					"localhost",
+					GetParentFromNodeMap(id, nodeIDs, nodeMap)),
+				readyWg.Done)
 			wg.Done()
 		}()
 	}
@@ -55,9 +60,9 @@ func StartTestNode(discardLogs bool) (*Node, *sync.WaitGroup) {
 	var wg sync.WaitGroup
 	id := "10"
 	wg.Add(1)
-	node := NewNode(id, ":9090", io.Discard)
+	node := NewNode(id, "localhost", "9090", io.Discard)
 	go func() {
-		node.Run(":9080", readyWg.Done)
+		node.Run("localhost:9080", readyWg.Done)
 		wg.Done()
 	}()
 	time.Sleep(consts.StartupDelay)

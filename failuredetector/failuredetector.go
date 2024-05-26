@@ -125,16 +125,6 @@ func (fd *FailureDetector) sendHeartbeat() {
 			"fn", "fd.sendHeartbeat")
 		return
 	}
-	//	nodeIDs := make([]string, 0)
-	//	for _, gorumsID := range gorumsConfig.NodeIDs() {
-	//		id, ok := fd.nodeManager.NodeID(gorumsID)
-	//		if !ok {
-	//			panic("gorums ID " + strconv.FormatUint(uint64(gorumsID), 10) + " not found in nodeManager")
-	//		}
-	//		nodeIDs = append(nodeIDs, id)
-	//	}
-	//	fd.logger.Debug("sending heartbeat",
-	//		slog.Any("nodeIDs", nodeIDs))
 	msg := fdprotos.HeartbeatMessage{NodeID: fd.id}
 	ctx := context.Background()
 	gorumsConfig.Heartbeat(ctx, &msg)

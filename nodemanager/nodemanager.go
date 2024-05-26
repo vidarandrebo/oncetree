@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net"
 	"reflect"
 	"slices"
 	"sync"
@@ -85,7 +86,6 @@ func New(id string, address string, logger *slog.Logger, eventBus *eventbus.Even
 func (nm *NodeManager) SendPrepare(e fdevents.NodeFailedEvent) {
 	nm.logger.Info("sending prepare")
 	nm.recoveryProcess.mut.Lock()
-	defer nm.recoveryProcess.mut.Unlock()
 
 	if (nm.recoveryProcess.isActive) && (nm.recoveryProcess.groupID != e.NodeID) {
 		panic("more than 1 concurrent failure, unrecoverable")
@@ -93,6 +93,7 @@ func (nm *NodeManager) SendPrepare(e fdevents.NodeFailedEvent) {
 	if nm.blackList.Contains(e.NodeID) {
 		nm.logger.Info("node failure already handled, skipping",
 			slog.String("id", e.NodeID))
+		nm.recoveryProcess.mut.Unlock()
 		return
 	}
 	if !nm.recoveryProcess.isActive {
@@ -103,6 +104,7 @@ func (nm *NodeManager) SendPrepare(e fdevents.NodeFailedEvent) {
 	if !ok {
 		nm.logger.Error("failed node does not exist",
 			slog.String("id", e.NodeID))
+		nm.recoveryProcess.mut.Unlock()
 		return
 	}
 	for _, groupMember := range failedNode.Group.members {
@@ -126,10 +128,13 @@ func (nm *NodeManager) SendPrepare(e fdevents.NodeFailedEvent) {
 
 		nm.blackList.Add(failedNode.ID)
 		nm.recoveryProcess.stop()
+		nm.recoveryProcess.mut.Unlock()
 		nm.eventBus.PushTask(nm.SendGroupInfo)
+		nm.eventBus.PushEvent(nmevents.NewTreeRecoveredEvent(failedNode.ID))
 		return
 	}
-	cfg, err := nm.gorumsProvider.CustomNodeManagerConfig(nm.GorumsRecoveryMap())
+	nm.recoveryProcess.mut.Unlock()
+	cfg, err := nm.gorumsProvider.CustomNodeManagerConfig(recoveryMap)
 	if err != nil {
 		nm.logger.Error("creation of recovery gorums config failed",
 			slog.Any("err", err))
@@ -137,6 +142,8 @@ func (nm *NodeManager) SendPrepare(e fdevents.NodeFailedEvent) {
 	}
 
 	ctx := context.Background()
+	nm.logger.Info("config info",
+		slog.Int("numnodes", cfg.Size()))
 	response, err := cfg.Prepare(ctx, &nmprotos.PrepareMessage{
 		NodeID:  nm.id,
 		GroupID: failedNode.ID,
@@ -144,11 +151,12 @@ func (nm *NodeManager) SendPrepare(e fdevents.NodeFailedEvent) {
 	})
 	nm.logger.Info("received response from prepare",
 		slog.Bool("isLeader", response.GetOK()))
+	nm.recoveryProcess.mut.Lock()
 	nm.recoveryProcess.isLeader = response.GetOK()
+	nm.recoveryProcess.mut.Unlock()
 
 	if response.GetOK() {
 		go nm.SendAccept()
-		// nm.eventBus.PushTask(nm.SendAccept)
 	}
 }
 
@@ -192,7 +200,6 @@ func (nm *NodeManager) SendAccept() {
 
 	if learn.GetOK() {
 		go nm.SendCommit()
-		// nm.eventBus.PushTask(nm.SendCommit)
 	}
 }
 
@@ -395,9 +402,14 @@ func (nm *NodeManager) Parent() *Neighbour {
 func (nm *NodeManager) SendJoin(knownAddr string) {
 	nm.joinMut.Lock()
 	defer nm.joinMut.Unlock()
-	if knownAddr == "" {
+	addr, port, _ := net.SplitHostPort(knownAddr)
+	if port == "" {
 		return
 	}
+	nm.logger.Info("sending join to",
+		slog.String("addr", addr),
+		slog.String("port", port))
+
 	joined := false
 	for !joined {
 		knownNodeID, _ := uuid.NewV7()
