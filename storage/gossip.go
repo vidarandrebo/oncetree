@@ -54,11 +54,11 @@ func (ss *StorageService) Gossip(ctx gorums.ServerCtx, request *kvsprotos.Gossip
 
 	if updated {
 		ss.sendGossip(request.NodeID, request.GetKey(), valuesToGossip, writeTs, localValue)
-		ss.logger.Info("value updated, stored value is older",
+		ss.logger.Debug("value updated, stored value is older",
 			slog.String("nodeID", request.GetNodeID()),
 			slog.Int64("key", request.GetKey()))
 	} else {
-		ss.logger.Info("value not updated, stored value is newer",
+		ss.logger.Debug("value not updated, stored value is newer",
 			slog.String("nodeID", request.GetNodeID()),
 			slog.Int64("key", request.GetKey()))
 	}
