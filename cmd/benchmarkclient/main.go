@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/google/uuid"
+
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/vidarandrebo/oncetree/benchmark"
@@ -28,6 +30,8 @@ func main() {
 	if err != nil {
 		panic("could not get hostname")
 	}
+	id += "_"
+	id += uuid.New().String()
 	fileName := filepath.Join(consts.LogFolder, fmt.Sprintf("client_%s.log", id))
 	file, err := os.OpenFile(fileName, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o666)
 	if err != nil {
@@ -67,7 +71,7 @@ func main() {
 	if !ok {
 		panic("no storage config")
 	}
-	WriteStartValues(consts.BenchmarkNumKeys, benchMarkNodes, storageCfg)
+	WriteStartValues(consts.BenchmarkNumKeys, benchMarkNodes, storageCfg, logger)
 	time.Sleep(2 * consts.RPCContextTimeout)
 	logger.Info("start values written")
 
@@ -160,9 +164,10 @@ func CrashNode(cfg *nodeprotos.Configuration, gorumsID uint32) {
 	fmt.Println("crashed node")
 }
 
-func WriteStartValues(n int64, benchMarkNodes map[string]benchmark.Node, cfg *kvsprotos.Configuration) {
+func WriteStartValues(n int64, benchMarkNodes map[string]benchmark.Node, cfg *kvsprotos.Configuration, logger *slog.Logger) {
 	accumulator := 0 * time.Second
-	timePerRequest := 1000 * time.Microsecond
+	// 25 % writers -> 4 times slower when readers are writing
+	timePerRequest := 4 * 1000 * time.Microsecond
 	t0 := time.Now()
 	sleepUnit := 10 * time.Millisecond
 	for i := int64(0); i < n; i++ {
@@ -184,6 +189,8 @@ func WriteStartValues(n int64, benchMarkNodes map[string]benchmark.Node, cfg *kv
 			}
 		}
 	}
+	logger.Info("time to slow start values",
+		slog.Int64("ms", time.Now().Sub(t0).Milliseconds()-accumulator.Milliseconds()))
 }
 
 func mapOnceTreeNodes(provider *gorumsprovider.GorumsProvider, knownAddr string) map[string]benchmark.Node {
