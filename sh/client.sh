@@ -1,18 +1,38 @@
 #!/bin/bash
-
-for x in bbchain{16..27}
+while getopts n:l:w:r: flag
 do
-  ssh $x mkdir -p logs
+    case "${flag}" in
+        n) num_nodes=${OPTARG};;
+        l) leader=${OPTARG};;
+        r) reader=${OPTARG};;
+        w) writer=${OPTARG};;
+    esac
 done
+echo "num_nodes: $num_nodes";
+echo "leader: $leader";
 
-echo bbchain16
-ssh bbchain16 "nohup ./bin/benchmarkclient --known-address bbchain1:8080 --node-to-crash-address bbchain5:8080 --writer --leader 1>> /dev/null 2>> /dev/null &"
+if [[ $leader == "true" ]]; then
+    echo "create leader writer"
+  nohup ./bin/benchmarkclient --known-address bbchain1:8080 --node-to-crash-address bbchain5:8080 --writer --leader 1>> /dev/null 2>> /dev/null &
+  for ((i = 1; i < $num_nodes; i++))
+  do
+    echo "create writer"
+    nohup ./bin/benchmarkclient --known-address bbchain1:8080 --node-to-crash-address bbchain5:8080 --writer 1>> /dev/null 2>> /dev/null &
+  done
+else
+  if [[ $reader == "true" ]]; then
+    for ((i = 0; i < $num_nodes; i++))
+    do
+      echo "create reader"
+      nohup ./bin/benchmarkclient --known-address bbchain1:8080 --node-to-crash-address bbchain5:8080 --reader 1>> /dev/null 2>> /dev/null &
+    done
+  elif [[ $writer == "true" ]]; then
+    for ((i = 0; i < $num_nodes; i++))
+    do
+      echo "create writer"
+      nohup ./bin/benchmarkclient --known-address bbchain1:8080 --node-to-crash-address bbchain5:8080 --writer 1>> /dev/null 2>> /dev/null &
+    done
+  fi
 
-for x in bbchain{17..18}
-  do echo $x
-  ssh $x "nohup ./bin/benchmarkclient --known-address bbchain1:8080 --node-to-crash-address bbchain5:8080 --writer 1> /dev/null 2> /dev/null &"
-done
-for x in bbchain{19..27}
-  do echo $x
-  ssh $x "nohup ./bin/benchmarkclient --known-address bbchain1:8080 --node-to-crash-address bbchain5:8080 --reader 1> /dev/null 2> /dev/null &"
-done
+fi
+
