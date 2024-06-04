@@ -160,7 +160,7 @@ type QuorumSpec interface {
 	// supplied to the ReadAll method at call time, and may or may not
 	// be used by the quorum function. If the in parameter is not needed
 	// you should implement your quorum function with '_ *ReadRequest'.
-	ReadAllQF(in *ReadRequest, replies map[uint32]*ReadAllResponse) (*ReadAllResponse, bool)
+	ReadAllQF(in *ReadRequest, replies map[uint32]*ReadResponseWithID) (*ReadResponses, bool)
 
 	// PrepareQF is the quorum function for the Prepare
 	// quorum call method. The in parameter is the request object
@@ -179,15 +179,15 @@ type QuorumSpec interface {
 
 // ReadAll is a quorum call invoked on all nodes in configuration c,
 // with the same argument in, and returns a combined result.
-func (c *Configuration) ReadAll(ctx context.Context, in *ReadRequest) (resp *ReadAllResponse, err error) {
+func (c *Configuration) ReadAll(ctx context.Context, in *ReadRequest) (resp *ReadResponses, err error) {
 	cd := gorums.QuorumCallData{
 		Message: in,
 		Method:  "keyvaluestorage.KeyValueStorage.ReadAll",
 	}
 	cd.QuorumFunction = func(req protoreflect.ProtoMessage, replies map[uint32]protoreflect.ProtoMessage) (protoreflect.ProtoMessage, bool) {
-		r := make(map[uint32]*ReadAllResponse, len(replies))
+		r := make(map[uint32]*ReadResponseWithID, len(replies))
 		for k, v := range replies {
-			r[k] = v.(*ReadAllResponse)
+			r[k] = v.(*ReadResponseWithID)
 		}
 		return c.qspec.ReadAllQF(req.(*ReadRequest), r)
 	}
@@ -196,7 +196,7 @@ func (c *Configuration) ReadAll(ctx context.Context, in *ReadRequest) (resp *Rea
 	if err != nil {
 		return nil, err
 	}
-	return res.(*ReadAllResponse), err
+	return res.(*ReadResponses), err
 }
 
 // Prepare is a quorum call invoked on all nodes in configuration c,
@@ -328,7 +328,7 @@ func (n *Node) PrintState(ctx context.Context, in *emptypb.Empty) (resp *emptypb
 type KeyValueStorage interface {
 	Write(ctx gorums.ServerCtx, request *WriteRequest) (response *emptypb.Empty, err error)
 	Read(ctx gorums.ServerCtx, request *ReadRequest) (response *ReadResponse, err error)
-	ReadAll(ctx gorums.ServerCtx, request *ReadRequest) (response *ReadAllResponse, err error)
+	ReadAll(ctx gorums.ServerCtx, request *ReadRequest) (response *ReadResponseWithID, err error)
 	ReadLocal(ctx gorums.ServerCtx, request *ReadLocalRequest) (response *ReadResponse, err error)
 	Gossip(ctx gorums.ServerCtx, request *GossipMessage) (response *emptypb.Empty, err error)
 	PrintState(ctx gorums.ServerCtx, request *emptypb.Empty) (response *emptypb.Empty, err error)
@@ -399,8 +399,8 @@ type internalPromiseMessage struct {
 	err   error
 }
 
-type internalReadAllResponse struct {
+type internalReadResponseWithID struct {
 	nid   uint32
-	reply *ReadAllResponse
+	reply *ReadResponseWithID
 	err   error
 }

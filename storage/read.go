@@ -31,10 +31,18 @@ func (ss *StorageService) ReadLocal(ctx gorums.ServerCtx, request *kvsprotos.Rea
 	return &kvsprotos.ReadResponse{Value: value.Value}, nil
 }
 
-func (ss *StorageService) ReadAll(ctx gorums.ServerCtx, request *kvsprotos.ReadRequest) (response *kvsprotos.ReadAllResponse, err error) {
+func (ss *StorageService) ReadAll(ctx gorums.ServerCtx, request *kvsprotos.ReadRequest) (*kvsprotos.ReadResponseWithID, error) {
+	ss.requestMetrics.CountRead()
 	value, err := ss.storage.ReadValue(request.Key)
 	if err != nil {
-		return &kvsprotos.ReadAllResponse{Value: nil}, err
+		return &kvsprotos.ReadResponseWithID{
+			Value: 0,
+			ID:    ss.id,
+		}, err
 	}
-	return &kvsprotos.ReadAllResponse{Value: map[string]int64{ss.id: value}}, nil
+	return &kvsprotos.ReadResponseWithID{
+			Value: value,
+			ID:    ss.id,
+		},
+		nil
 }

@@ -55,7 +55,7 @@ func generateRandomWrites(n int) map[string]map[int64]int64 {
 	for _, id := range nodeIDs {
 		values[id] = make(map[int64]int64)
 		for i := 0; i < n; i++ {
-			values[id][rand.Int63n(int64(n))] = rand.Int63n(math.MaxInt32)
+			values[id][rand.Int63n(int64(100))] = rand.Int63n(math.MaxInt32)
 		}
 	}
 	return values
@@ -291,15 +291,15 @@ func TestStorageService_WriteLocal(t *testing.T) {
 		7  8    9
 */
 func TestStorageService_RecoverValues(t *testing.T) {
-	shouldHaveValue := []uint32{1, 5, 6}
-	shouldNotHaveValue := []uint32{0, 3, 4, 7, 8, 9}
+	shouldHaveLocalValue := []uint32{1, 5, 6}
+	shouldNotHaveLocalValue := []uint32{0, 3, 4, 7, 8, 9}
 
 	testNodes, wg := oncetree.StartTestNodes(false)
 	gorumsProvider := gorumsprovider.New(logger)
 	storageCfg, _ := storageConfig(gorumsProvider)
 	nodeCfg, _ := nodeConfig(gorumsProvider)
 
-	valuesWritten := writeRandomValuesToNodes(storageCfg, 100)
+	valuesWritten := writeRandomValuesToNodes(storageCfg, 1000)
 	joinedNodes := []string{"0", "2"}
 	keys := keysFromValueMapForNodes(joinedNodes, valuesWritten)
 
@@ -314,7 +314,7 @@ func TestStorageService_RecoverValues(t *testing.T) {
 	time.Sleep(consts.HeartbeatSendInterval * consts.FailureDetectorStrikes * 2)
 
 	for _, key := range keys.Values() {
-		for _, id := range shouldNotHaveValue {
+		for _, id := range shouldNotHaveLocalValue {
 			node, exists := storageCfg.Node(id)
 			assert.True(t, exists)
 			ctx = context.Background()
@@ -324,9 +324,14 @@ func TestStorageService_RecoverValues(t *testing.T) {
 			})
 			assert.NotNil(t, err)
 			assert.Equal(t, int64(0), response.GetValue())
+
+			ctx = context.Background()
+			response, err = node.Read(ctx, &kvsprotos.ReadRequest{Key: key})
+			assert.Nil(t, err)
+			assert.Equal(t, aggValueForKey(key, valuesWritten), response.GetValue())
 		}
 
-		for _, id := range shouldHaveValue {
+		for _, id := range shouldHaveLocalValue {
 			node, exists := storageCfg.Node(id)
 			assert.True(t, exists)
 			ctx = context.Background()
@@ -336,6 +341,11 @@ func TestStorageService_RecoverValues(t *testing.T) {
 			})
 			assert.Nil(t, err)
 			assert.Equal(t, nodesValueForKey(key, joinedNodes, valuesWritten), response.GetValue())
+
+			ctx = context.Background()
+			response, err = node.Read(ctx, &kvsprotos.ReadRequest{Key: key})
+			assert.Nil(t, err)
+			assert.Equal(t, aggValueForKey(key, valuesWritten), response.GetValue())
 		}
 	}
 
@@ -375,7 +385,7 @@ func TestStorageService_RecoverValuesLeaf(t *testing.T) {
 	storageCfg, _ := storageConfig(gorumsProvider)
 	nodeCfg, _ := nodeConfig(gorumsProvider)
 
-	valuesWritten := writeRandomValuesToNodes(storageCfg, 100)
+	valuesWritten := writeRandomValuesToNodes(storageCfg, 1000)
 	joinedNodes := []string{"3", "8"}
 	keys := keysFromValueMapForNodes(joinedNodes, valuesWritten)
 
@@ -400,6 +410,11 @@ func TestStorageService_RecoverValuesLeaf(t *testing.T) {
 			})
 			assert.NotNil(t, err)
 			assert.Equal(t, int64(0), response.GetValue())
+
+			ctx = context.Background()
+			response, err = node.Read(ctx, &kvsprotos.ReadRequest{Key: key})
+			assert.Nil(t, err)
+			assert.Equal(t, aggValueForKey(key, valuesWritten), response.GetValue())
 		}
 
 		for _, id := range shouldHaveValue {
@@ -412,6 +427,11 @@ func TestStorageService_RecoverValuesLeaf(t *testing.T) {
 			})
 			assert.Nil(t, err)
 			assert.Equal(t, nodesValueForKey(key, joinedNodes, valuesWritten), response.GetValue())
+
+			ctx = context.Background()
+			response, err = node.Read(ctx, &kvsprotos.ReadRequest{Key: key})
+			assert.Nil(t, err)
+			assert.Equal(t, aggValueForKey(key, valuesWritten), response.GetValue())
 		}
 	}
 
@@ -449,7 +469,7 @@ func TestStorageService_RecoverValuesRoot(t *testing.T) {
 	storageCfg, _ := storageConfig(gorumsProvider)
 	nodeCfg, _ := nodeConfig(gorumsProvider)
 
-	valuesWritten := writeRandomValuesToNodes(storageCfg, 100)
+	valuesWritten := writeRandomValuesToNodes(storageCfg, 1000)
 	joinedNodes := []string{"0", "1"}
 	keys := keysFromValueMapForNodes(joinedNodes, valuesWritten)
 
@@ -474,6 +494,11 @@ func TestStorageService_RecoverValuesRoot(t *testing.T) {
 			})
 			assert.NotNil(t, err)
 			assert.Equal(t, int64(0), response.GetValue())
+
+			ctx = context.Background()
+			response, err = node.Read(ctx, &kvsprotos.ReadRequest{Key: key})
+			assert.Nil(t, err)
+			assert.Equal(t, aggValueForKey(key, valuesWritten), response.GetValue())
 		}
 
 		for _, id := range shouldHaveValue {
@@ -486,6 +511,11 @@ func TestStorageService_RecoverValuesRoot(t *testing.T) {
 			})
 			assert.Nil(t, err)
 			assert.Equal(t, nodesValueForKey(key, joinedNodes, valuesWritten), response.GetValue())
+
+			ctx = context.Background()
+			response, err = node.Read(ctx, &kvsprotos.ReadRequest{Key: key})
+			assert.Nil(t, err)
+			assert.Equal(t, aggValueForKey(key, valuesWritten), response.GetValue())
 		}
 	}
 
