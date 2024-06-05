@@ -7,16 +7,16 @@ done
 
 #1
 echo bbchain16
-ssh bbchain16 "./sh/client.sh -n 3 -l true"
+ssh bbchain16 "./sh/client.sh -n 8 -l true"
 
 #2
 for x in bbchain{17..18}
   do echo $x
-  ssh $x "./sh/client.sh -n 3 -w true"
+  ssh $x "./sh/client.sh -n 8 -w true"
 done
 
 #9
 for x in bbchain{19..27}
   do echo $x
-  ssh $x "./sh/client.sh -n 3 -r true"
+  ssh $x "./sh/client.sh -n 8 -r true"
 done

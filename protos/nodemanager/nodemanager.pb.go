@@ -721,7 +721,6 @@ var (
 		(*emptypb.Empty)(nil),    // 11: google.protobuf.Empty
 	}
 )
-
 var file_protos_nodemanager_nodemanager_proto_depIdxs = []int32{
 	3,  // 0: nodemanager.GroupInfoMessage.Members:type_name -> nodemanager.GroupMemberInfo
 	10, // 1: nodemanager.AcceptMessage.NewParent:type_name -> nodemanager.AcceptMessage.NewParentEntry
