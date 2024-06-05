@@ -19,8 +19,8 @@ import (
 	"github.com/vidarandrebo/oncetree/consts"
 	"github.com/vidarandrebo/oncetree/eventbus"
 
-	"github.com/vidarandrebo/oncetree/concurrent/hashset"
-	"github.com/vidarandrebo/oncetree/concurrent/maps"
+	"github.com/vidarandrebo/oncetree/common/concurrentmap"
+	"github.com/vidarandrebo/oncetree/common/hashset"
 	"github.com/vidarandrebo/oncetree/nodemanager"
 
 	fdprotos "github.com/vidarandrebo/oncetree/protos/failuredetector"
@@ -29,7 +29,7 @@ import (
 type FailureDetector struct {
 	id             string
 	nodes          *hashset.ConcurrentHashSet[string]
-	strikes        *maps.ConcurrentIntegerMap[string]
+	strikes        *concurrentmap.ConcurrentIntegerMap[string]
 	suspected      *hashset.ConcurrentHashSet[string]
 	logger         *slog.Logger
 	nodeManager    *nodemanager.NodeManager
@@ -41,9 +41,9 @@ type FailureDetector struct {
 func New(id string, logger *slog.Logger, nodeManager *nodemanager.NodeManager, eventBus *eventbus.EventBus, configProvider gorumsprovider.FDConfigProvider) *FailureDetector {
 	fd := &FailureDetector{
 		id:             id,
-		nodes:          hashset.New[string](),
-		strikes:        maps.NewConcurrentIntegerMap[string](),
-		suspected:      hashset.New[string](),
+		nodes:          hashset.NewConcurrentHashSet[string](),
+		strikes:        concurrentmap.NewConcurrentIntegerMap[string](),
+		suspected:      hashset.NewConcurrentHashSet[string](),
 		nodeManager:    nodeManager,
 		eventBus:       eventBus,
 		logger:         logger.With(slog.Group("node", slog.String("module", "failuredetector"))),

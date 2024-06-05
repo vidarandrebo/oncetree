@@ -8,7 +8,7 @@ import (
 
 type HashSet[T comparable] map[T]struct{}
 
-func NewHashSet[T comparable]() HashSet[T] {
+func New[T comparable]() HashSet[T] {
 	return make(HashSet[T])
 }
 
@@ -49,7 +49,7 @@ func (s HashSet[T]) Clear() {
 }
 
 func (s HashSet[T]) Intersection(b HashSet[T]) HashSet[T] {
-	result := NewHashSet[T]()
+	result := New[T]()
 	for key := range s {
 		if b.Contains(key) {
 			result.Add(key)
@@ -67,7 +67,7 @@ type ConcurrentHashSet[T comparable] struct {
 	mut     sync.RWMutex
 }
 
-func New[T comparable]() *ConcurrentHashSet[T] {
+func NewConcurrentHashSet[T comparable]() *ConcurrentHashSet[T] {
 	return &ConcurrentHashSet[T]{
 		hashSet: make(HashSet[T]),
 	}

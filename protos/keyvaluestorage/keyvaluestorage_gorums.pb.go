@@ -167,7 +167,7 @@ type QuorumSpec interface {
 	// supplied to the Prepare method at call time, and may or may not
 	// be used by the quorum function. If the in parameter is not needed
 	// you should implement your quorum function with '_ *PrepareMessage'.
-	PrepareQF(in *PrepareMessage, replies map[uint32]*PromiseMessage) (*PromiseMessage, bool)
+	PrepareQF(in *PrepareMessage, replies map[uint32]*PromiseMessage) (*PromiseMessages, bool)
 
 	// AcceptQF is the quorum function for the Accept
 	// quorum call method. The in parameter is the request object
@@ -201,7 +201,7 @@ func (c *Configuration) ReadAll(ctx context.Context, in *ReadRequest) (resp *Rea
 
 // Prepare is a quorum call invoked on all nodes in configuration c,
 // with the same argument in, and returns a combined result.
-func (c *Configuration) Prepare(ctx context.Context, in *PrepareMessage) (resp *PromiseMessage, err error) {
+func (c *Configuration) Prepare(ctx context.Context, in *PrepareMessage) (resp *PromiseMessages, err error) {
 	cd := gorums.QuorumCallData{
 		Message: in,
 		Method:  "keyvaluestorage.KeyValueStorage.Prepare",
@@ -218,7 +218,7 @@ func (c *Configuration) Prepare(ctx context.Context, in *PrepareMessage) (resp *
 	if err != nil {
 		return nil, err
 	}
-	return res.(*PromiseMessage), err
+	return res.(*PromiseMessages), err
 }
 
 // Accept is a quorum call invoked on each node in configuration c,

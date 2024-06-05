@@ -69,23 +69,23 @@ func TestKeyValueStorage_ReadValue_NoKey(t *testing.T) {
 }
 
 func TestKeyValueStorage_ReadValueExceptNode(t *testing.T) {
-	value, err := keyValueStorage.ReadValueExceptNode(4, "ID1")
+	value, err := keyValueStorage.GossipValue(4, "ID1")
 	assert.Nil(t, err)
 	assert.Equal(t, int64(55), value)
 
-	value, err = keyValueStorage.ReadValueExceptNode(1, "ID4")
+	value, err = keyValueStorage.GossipValue(1, "ID4")
 	assert.Nil(t, err)
 	assert.Equal(t, int64(71), value)
 }
 
 func TestKeyValueStorage_ReadValueExceptNode_NoKey(t *testing.T) {
-	value, err := keyValueStorage.ReadValueExceptNode(99, "ID1")
+	value, err := keyValueStorage.GossipValue(99, "ID1")
 	assert.NotNil(t, err)
 	assert.Equal(t, int64(0), value)
 }
 
 func TestKeyValueStorage_ReadValueExceptNode_FoundZero(t *testing.T) {
-	value, err := keyValueStorage.ReadValueExceptNode(5, "ID1")
+	value, err := keyValueStorage.GossipValue(5, "ID1")
 	assert.Nil(t, err)
 	assert.Equal(t, int64(0), value)
 }

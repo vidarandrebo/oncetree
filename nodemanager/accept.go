@@ -4,6 +4,10 @@ import (
 	"log/slog"
 	"slices"
 
+	"github.com/vidarandrebo/oncetree/common/hashset"
+
+	"github.com/vidarandrebo/oncetree/storage/sevents"
+
 	"github.com/relab/gorums"
 	nmprotos "github.com/vidarandrebo/oncetree/protos/nodemanager"
 )
@@ -24,9 +28,9 @@ func (nm *NodeManager) Accept(ctx gorums.ServerCtx, request *nmprotos.AcceptMess
 	}
 
 	if nm.recoveryProcess.groupID != request.GetGroupID() {
-		nm.logger.Error("more than 1 concurrent failure, unrecoverable",
+		nm.logger.Error("more than 1 common failure, unrecoverable",
 			slog.String("id", request.GetGroupID()))
-		panic("more than 1 concurrent failure, unrecoverable")
+		panic("more than 1 common failure, unrecoverable")
 	}
 
 	failedNode, ok := nm.neighbours.Get(request.GetGroupID())
@@ -42,5 +46,23 @@ func (nm *NodeManager) Accept(ctx gorums.ServerCtx, request *nmprotos.AcceptMess
 	}
 
 	nm.recoveryProcess.newParent = newParent
+
+	// do not send data from failed node to new parent
+	gossipExcludes := make(map[string]hashset.HashSet[string])
+	gossipExcludes[nm.recoveryProcess.newParent] = hashset.New[string]()
+	gossipExcludes[nm.recoveryProcess.newParent].Add(nm.recoveryProcess.groupID)
+
+	// do not send data from new parent to existing children
+	for _, neighbourID := range nm.NeighbourIDs() {
+		if neighbourID != nm.recoveryProcess.groupID {
+			gossipExcludes[neighbourID] = hashset.New[string]()
+			gossipExcludes[neighbourID].Add(nm.recoveryProcess.newParent)
+		}
+	}
+
+	nm.eventBus.Execute(sevents.ExcludeFromStorageEvent{
+		ReadExcludeIDs: []string{nm.recoveryProcess.newParent}, // we do not read from new parent's data until it is joined with the failed node
+		GossipExcludes: gossipExcludes,
+	})
 	return &nmprotos.LearnMessage{OK: true}, nil
 }

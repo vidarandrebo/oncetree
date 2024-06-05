@@ -142,3 +142,19 @@ func (eb *EventBus) RegisterHandler(eventType reflect.Type, fn func(any)) {
 	}
 	eb.handlers[eventType] = append(eb.handlers[eventType], fn)
 }
+
+func (eb *EventBus) Execute(event any) {
+	eventType := reflect.TypeOf(event)
+	handlers, err := eb.eventHandlers(eventType)
+	if err != nil {
+		eb.logger.Error(
+			"no handler for execution of event",
+			slog.Any("event-type", eventType),
+			slog.Any("err", err),
+		)
+		return
+	}
+	for _, handler := range handlers {
+		handler(event)
+	}
+}

@@ -167,7 +167,7 @@ func CrashNode(cfg *nodeprotos.Configuration, gorumsID uint32) {
 func WriteStartValues(n int64, benchMarkNodes map[string]benchmark.Node, cfg *kvsprotos.Configuration, logger *slog.Logger) {
 	accumulator := 0 * time.Second
 	// 25 % writers -> 4 times slower when readers are writing
-	timePerRequest := 4 * 1000 * time.Microsecond
+	timePerRequest := 100 * time.Microsecond
 	t0 := time.Now()
 	sleepUnit := 10 * time.Millisecond
 	for i := int64(0); i < n; i++ {

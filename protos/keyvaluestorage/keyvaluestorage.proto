@@ -43,8 +43,20 @@ message PrepareMessage {
 }
 message PromiseMessage {
     bool OK = 1;
-    int64 Value = 2;
-    int64 Ts = 3;
+    int64 AggValue = 2;
+    int64 AggTimestamp = 3;
+    int64 LocalValue = 4;
+    int64 LocalTimestamp = 5;
+    int64 FailedLocalValue = 6;
+    int64 FailedLocalTimestamp = 7;
+    string NodeID = 8;
+}
+
+message PromiseMessages {
+    bool OK = 1;
+    int64 FailedLocalValue = 2;
+    int64 FailedLocalTimestamp = 3;
+    map<string, PromiseMessage> Values = 4;
 }
 message AcceptMessage {
     int64 Key = 1;
@@ -54,6 +66,7 @@ message AcceptMessage {
     string NodeID = 5;
     string FailedNodeID = 6;
 }
+
 message LearnMessage {
     bool OK = 1;
 }
@@ -71,6 +84,7 @@ service KeyValueStorage {
     rpc PrintState(google.protobuf.Empty) returns (google.protobuf.Empty) {}
     rpc Prepare(PrepareMessage) returns (PromiseMessage) {
         option (gorums.quorumcall) = true;
+        option (gorums.custom_return_type) = "PromiseMessages";
     }
     rpc Accept(AcceptMessage) returns (LearnMessage) {
         option (gorums.quorumcall) = true;

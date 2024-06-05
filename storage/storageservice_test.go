@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/vidarandrebo/oncetree/concurrent/hashset"
+	"github.com/vidarandrebo/oncetree/common/hashset"
 
 	"github.com/vidarandrebo/oncetree/gorumsprovider"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -29,6 +29,7 @@ import (
 
 // structure same as in testing_node.go
 var (
+	stateSize     = 1000
 	nodeIDs       = []string{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"}
 	gorumsNodeMap = map[string]uint32{
 		":9080": 0,
@@ -62,7 +63,7 @@ func generateRandomWrites(n int) map[string]map[int64]int64 {
 }
 
 func keysFromValueMap(valueMap map[string]map[int64]int64) hashset.HashSet[int64] {
-	hashSet := hashset.NewHashSet[int64]()
+	hashSet := hashset.New[int64]()
 	for _, values := range valueMap {
 		for key := range values {
 			hashSet.Add(key)
@@ -72,7 +73,7 @@ func keysFromValueMap(valueMap map[string]map[int64]int64) hashset.HashSet[int64
 }
 
 func keysFromValueMapForNodes(nodes []string, valueMap map[string]map[int64]int64) hashset.HashSet[int64] {
-	hashSet := hashset.NewHashSet[int64]()
+	hashSet := hashset.New[int64]()
 	for nodeID, values := range valueMap {
 		if slices.Contains(nodes, nodeID) {
 			for key := range values {
@@ -232,7 +233,7 @@ func TestStorageService_WriteLocal(t *testing.T) {
 	gorumsProvider := gorumsprovider.New(logger)
 	storageCfg, _ := storageConfig(gorumsProvider)
 
-	writtenValues := writeRandomValuesToNodes(storageCfg, 100)
+	writtenValues := writeRandomValuesToNodes(storageCfg, stateSize)
 	time.Sleep(consts.TestWaitAfterWrite)
 	nodes := []string{"2"}
 	keys := keysFromValueMapForNodes(nodes, writtenValues)
@@ -299,7 +300,7 @@ func TestStorageService_RecoverValues(t *testing.T) {
 	storageCfg, _ := storageConfig(gorumsProvider)
 	nodeCfg, _ := nodeConfig(gorumsProvider)
 
-	valuesWritten := writeRandomValuesToNodes(storageCfg, 1000)
+	valuesWritten := writeRandomValuesToNodes(storageCfg, stateSize)
 	joinedNodes := []string{"0", "2"}
 	keys := keysFromValueMapForNodes(joinedNodes, valuesWritten)
 
@@ -318,15 +319,15 @@ func TestStorageService_RecoverValues(t *testing.T) {
 			node, exists := storageCfg.Node(id)
 			assert.True(t, exists)
 			ctx = context.Background()
-			response, err := node.ReadLocal(ctx, &kvsprotos.ReadLocalRequest{
+			readLocalResponse, err := node.ReadLocal(ctx, &kvsprotos.ReadLocalRequest{
 				Key:    key,
 				NodeID: "0",
 			})
 			assert.NotNil(t, err)
-			assert.Equal(t, int64(0), response.GetValue())
+			assert.Equal(t, int64(0), readLocalResponse.GetValue())
 
 			ctx = context.Background()
-			response, err = node.Read(ctx, &kvsprotos.ReadRequest{Key: key})
+			response, err := node.Read(ctx, &kvsprotos.ReadRequest{Key: key})
 			assert.Nil(t, err)
 			assert.Equal(t, aggValueForKey(key, valuesWritten), response.GetValue())
 		}
@@ -335,15 +336,15 @@ func TestStorageService_RecoverValues(t *testing.T) {
 			node, exists := storageCfg.Node(id)
 			assert.True(t, exists)
 			ctx = context.Background()
-			response, err := node.ReadLocal(ctx, &kvsprotos.ReadLocalRequest{
+			readLocalResponse, err := node.ReadLocal(ctx, &kvsprotos.ReadLocalRequest{
 				Key:    key,
 				NodeID: "0",
 			})
 			assert.Nil(t, err)
-			assert.Equal(t, nodesValueForKey(key, joinedNodes, valuesWritten), response.GetValue())
+			assert.Equal(t, nodesValueForKey(key, joinedNodes, valuesWritten), readLocalResponse.GetValue())
 
 			ctx = context.Background()
-			response, err = node.Read(ctx, &kvsprotos.ReadRequest{Key: key})
+			response, err := node.Read(ctx, &kvsprotos.ReadRequest{Key: key})
 			assert.Nil(t, err)
 			assert.Equal(t, aggValueForKey(key, valuesWritten), response.GetValue())
 		}
@@ -385,7 +386,7 @@ func TestStorageService_RecoverValuesLeaf(t *testing.T) {
 	storageCfg, _ := storageConfig(gorumsProvider)
 	nodeCfg, _ := nodeConfig(gorumsProvider)
 
-	valuesWritten := writeRandomValuesToNodes(storageCfg, 1000)
+	valuesWritten := writeRandomValuesToNodes(storageCfg, stateSize)
 	joinedNodes := []string{"3", "8"}
 	keys := keysFromValueMapForNodes(joinedNodes, valuesWritten)
 
@@ -469,7 +470,7 @@ func TestStorageService_RecoverValuesRoot(t *testing.T) {
 	storageCfg, _ := storageConfig(gorumsProvider)
 	nodeCfg, _ := nodeConfig(gorumsProvider)
 
-	valuesWritten := writeRandomValuesToNodes(storageCfg, 1000)
+	valuesWritten := writeRandomValuesToNodes(storageCfg, 100)
 	joinedNodes := []string{"0", "1"}
 	keys := keysFromValueMapForNodes(joinedNodes, valuesWritten)
 

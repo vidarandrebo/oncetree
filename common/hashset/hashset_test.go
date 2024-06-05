@@ -1,7 +1,7 @@
 package hashset
 
 //func BenchmarkConcurrentHashSet_String(b *testing.B) {
-//	set := NewHashSet[int]()
+//	set := New[int]()
 //	for len(set) < 1000 {
 //		set.Add(rand.Int())
 //	}
@@ -11,7 +11,7 @@ package hashset
 //}
 //
 //func BenchmarkConcurrentHashSet_Values(b *testing.B) {
-//	set := NewHashSet[int]()
+//	set := New[int]()
 //	for len(set) < 1000 {
 //		set.Add(rand.Int())
 //	}
