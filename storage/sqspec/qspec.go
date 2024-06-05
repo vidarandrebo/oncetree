@@ -6,38 +6,40 @@ type QSpec struct {
 	NumNodes int
 }
 
-func (q *QSpec) ReadAllQF(in *kvsprotos.ReadRequest, replies map[uint32]*kvsprotos.ReadAllResponse) (*kvsprotos.ReadAllResponse, bool) {
+func (q *QSpec) ReadAllQF(in *kvsprotos.ReadRequest, replies map[uint32]*kvsprotos.ReadResponseWithID) (*kvsprotos.ReadResponses, bool) {
 	if len(replies) < q.NumNodes {
 		return nil, false
 	}
 	values := make(map[string]int64)
-	// merges the response maps into one maps. The maps in each reply only contains one key-value pair, but this is needed to have the same response type for the individaul response and the quorum call.
 	for _, reply := range replies {
-		for id, value := range reply.Value {
-			values[id] = value
-		}
+		values[reply.ID] = reply.Value
 	}
-	return &kvsprotos.ReadAllResponse{Value: values}, true
+	return &kvsprotos.ReadResponses{Value: values}, true
 }
 
-func (q *QSpec) PrepareQF(in *kvsprotos.PrepareMessage, replies map[uint32]*kvsprotos.PromiseMessage) (*kvsprotos.PromiseMessage, bool) {
+func (q *QSpec) PrepareQF(in *kvsprotos.PrepareMessage, replies map[uint32]*kvsprotos.PromiseMessage) (*kvsprotos.PromiseMessages, bool) {
 	if len(replies) < q.NumNodes {
 		return nil, false
 	}
-	response := kvsprotos.PromiseMessage{
-		OK:    true,
-		Value: 0,
-		Ts:    0,
+	response := kvsprotos.PromiseMessages{
+		OK:                   true,
+		FailedLocalTimestamp: 0,
+		FailedLocalValue:     0,
+		Values:               make(map[string]*kvsprotos.PromiseMessage),
 	}
 	for _, reply := range replies {
-		if reply.OK {
+		response.Values[reply.NodeID] = reply
+		// OK means the data that was provided in prepare was up to date
+		if reply.GetOK() {
 			continue
 		}
-		if reply.Ts > response.GetTs() {
-			response.Ts = reply.Ts
-			response.Value = reply.Value
+		// we overwrite the combined result if we have newer data in reply
+		if reply.GetFailedLocalTimestamp() > response.GetFailedLocalTimestamp() {
+			response.FailedLocalValue = reply.GetFailedLocalValue()
+			response.FailedLocalTimestamp = reply.GetFailedLocalTimestamp()
 			response.OK = false
 		}
+
 	}
 	return &response, true
 }
@@ -46,12 +48,15 @@ func (q *QSpec) AcceptQF(in *kvsprotos.AcceptMessage, replies map[uint32]*kvspro
 	if len(replies) != q.NumNodes {
 		return nil, false
 	}
-	learn := kvsprotos.LearnMessage{OK: true}
+
+	learn := &kvsprotos.LearnMessage{
+		OK: true,
+	}
 	for _, reply := range replies {
 		if !reply.OK {
 			learn.OK = false
-			return &learn, true
+			return learn, true
 		}
 	}
-	return &learn, true
+	return learn, true
 }

@@ -222,7 +222,6 @@ var (
 		(*emptypb.Empty)(nil), // 4: google.protobuf.Empty
 	}
 )
-
 var file_protos_node_node_proto_depIdxs = []int32{
 	3, // 0: node.NodesResponse.NodeMap:type_name -> node.NodesResponse.NodeMapEntry
 	4, // 1: node.NodeService.Crash:input_type -> google.protobuf.Empty

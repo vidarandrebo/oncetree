@@ -5,13 +5,15 @@ import (
 	"log/slog"
 	"reflect"
 
+	"github.com/vidarandrebo/oncetree/storage/sevents"
+
 	"github.com/vidarandrebo/oncetree/nodemanager/nmevents"
 
 	"github.com/vidarandrebo/oncetree/gorumsprovider"
 
 	"github.com/relab/gorums"
-	"github.com/vidarandrebo/oncetree/concurrent/maps"
-	"github.com/vidarandrebo/oncetree/concurrent/mutex"
+	"github.com/vidarandrebo/oncetree/common/concurrentmap"
+	"github.com/vidarandrebo/oncetree/common/mutex"
 	"github.com/vidarandrebo/oncetree/eventbus"
 	"github.com/vidarandrebo/oncetree/nodemanager"
 	kvsprotos "github.com/vidarandrebo/oncetree/protos/keyvaluestorage"
@@ -57,6 +59,12 @@ func NewStorageService(id string, logger *slog.Logger, nodeManager *nodemanager.
 			ss.SendPrepare(event)
 		}
 	})
+	eventBus.RegisterHandler(reflect.TypeOf(sevents.ExcludeFromStorageEvent{}), func(e any) {
+		if event, ok := e.(sevents.ExcludeFromStorageEvent); ok {
+			ss.storage.AddGossipExclusions(event.GossipExcludes)
+			ss.storage.AddReadExclusions(event.ReadExcludeIDs...)
+		}
+	})
 	return ss
 }
 
@@ -71,8 +79,11 @@ func (ss *StorageService) SendPrepare(event nmevents.TreeRecoveredEvent) {
 		if !ok {
 			ss.logger.Warn("storage does not contain value",
 				slog.Int64("key", key))
-			continue
 			// TODO, might need to actually send message here
+			storedValue = TimestampedValue{
+				Value:     0,
+				Timestamp: 0,
+			}
 		}
 		ctx := context.Background()
 		response, err := cfg.Prepare(ctx, &kvsprotos.PrepareMessage{
@@ -91,10 +102,14 @@ func (ss *StorageService) SendPrepare(event nmevents.TreeRecoveredEvent) {
 		} else {
 			// this case is extremely unlikely as the failing node will have had to transmit an update to only a
 			// subset of its neighbours while failing
-			ss.logger.Warn("remote has latest ts",
+			ss.logger.Debug("remote has latest ts",
 				slog.Int64("key", key),
-				slog.Int64("ts", response.GetTs()))
-			ss.storage.WriteLocalValue(key, response.GetValue(), response.GetTs(), event.FailedNodeID)
+				slog.Int64("ts", response.GetFailedLocalTimestamp()))
+			ss.storage.WriteLocalValue(key, response.GetFailedLocalValue(), response.GetFailedLocalTimestamp(), event.FailedNodeID)
+		}
+		for nodeID, promise := range response.Values {
+			ss.storage.WriteValue(key, promise.AggValue, promise.AggTimestamp, nodeID)
+			ss.storage.WriteLocalValue(key, promise.LocalValue, promise.LocalTimestamp, nodeID)
 		}
 		// TODO - there is a case where a failed node has partially propagated a new key.
 		// there should be a way to ensure that the values of all keys are transferred into leaders ownership,
@@ -124,7 +139,10 @@ func (ss *StorageService) SendAccept(failedNodeID string) {
 			ss.logger.Info("failed node and self does not store value for key",
 				slog.String("id", failedNodeID),
 				slog.Int64("key", key))
-			continue
+			oldLocal = TimestampedValue{
+				Value:     0,
+				Timestamp: 0,
+			}
 		} else if !ok {
 			oldLocal = TimestampedValue{Value: 0, Timestamp: 0}
 		}
@@ -140,8 +158,10 @@ func (ss *StorageService) SendAccept(failedNodeID string) {
 				slog.Int64("value", newLocalValue),
 				slog.Int64("key", key))
 		}
+
 		ss.storage.DeleteAgg(key, failedNodeID)
 		ss.storage.DeleteLocal(key, failedNodeID)
+		ss.storage.RemoveExclusionsFromKey(key)
 
 		// does not user storage.ReadLocalValue, since the aggregated value IS the local value in this case, and self's local value cannot be found using ReadLocalValue
 		// both the write and read must happen while ts mutex is locked to avoid inconsistencies
@@ -155,7 +175,7 @@ func (ss *StorageService) SendAccept(failedNodeID string) {
 			ss.logger.Error("failed to get valus to gossip")
 		}
 
-		valuesToGossipSafe := maps.FromMap(valuesToGossip)
+		valuesToGossipSafe := concurrentmap.FromMap(valuesToGossip)
 		ctx := context.Background()
 		response, err := cfg.Accept(ctx, &kvsprotos.AcceptMessage{
 			NodeID:       ss.id,
@@ -189,6 +209,7 @@ func (ss *StorageService) SendAccept(failedNodeID string) {
 		}
 		ss.logger.Debug("got response from accept",
 			slog.Bool("ok", response.GetOK()))
+
 	}
 	ss.logger.Info("done sending accept messages")
 }
@@ -208,7 +229,7 @@ func (ss *StorageService) shareAll(nodeID string) {
 			// not an error state in this case, just means that no local value exists for key
 			localValue = TimestampedValue{Value: 0, Timestamp: 0}
 		}
-		aggValue, err := ss.storage.ReadValueExceptNode(key, nodeID)
+		aggValue, err := ss.storage.GossipValue(key, nodeID)
 		ss.timestamp.RUnlock(&tsRef)
 		if err != nil {
 			ss.logger.Error(

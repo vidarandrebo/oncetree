@@ -70,7 +70,7 @@ func StartTestNode(discardLogs bool) (*Node, *sync.WaitGroup) {
 }
 
 // GetParentFromNodeMap assumes a binary tree as slice where a nodes children are at index 2i+1 and 2i+2
-// Uses both a slice and a maps to ensure consistent iteration order
+// Uses both a slice and a concurrentmap to ensure consistent iteration order
 func GetParentFromNodeMap(id string, nodeIDs []string, nodes map[string]string) string {
 	for i, nodeID := range nodeIDs {
 		// find n as a child of current node -> current node is n's parent

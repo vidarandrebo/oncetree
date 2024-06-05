@@ -28,9 +28,9 @@ func (nm *NodeManager) Prepare(ctx gorums.ServerCtx, request *nmprotos.PrepareMe
 	defer nm.recoveryProcess.mut.Unlock()
 
 	if (nm.recoveryProcess.isActive) && (nm.recoveryProcess.groupID != request.GetGroupID()) {
-		nm.logger.Error("more than 1 concurrent failure, unrecoverable",
+		nm.logger.Error("more than 1 common failure, unrecoverable",
 			slog.String("id", request.GetGroupID()))
-		panic("more than 1 concurrent failure, unrecoverable")
+		panic("more than 1 common failure, unrecoverable")
 	}
 	if !nm.recoveryProcess.isActive {
 		nm.recoveryProcess.start(request.GetGroupID())

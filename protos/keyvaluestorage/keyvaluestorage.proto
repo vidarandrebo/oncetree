@@ -13,8 +13,13 @@ message ReadLocalRequest {
     string NodeID = 2;
 }
 message ReadResponse {int64 Value = 1;}
-// ReadAllResponse contains a map Address -> Value
-message ReadAllResponse {map<string, int64> Value = 1;}
+message ReadResponseWithID {
+    string ID = 1;
+    int64 Value = 2;
+}
+
+// ReadResponses contains a map ID -> ReadResponse
+message ReadResponses {map<string, int64> Value = 1;}
 
 message WriteRequest {
     int64 Key = 1;
@@ -38,8 +43,20 @@ message PrepareMessage {
 }
 message PromiseMessage {
     bool OK = 1;
-    int64 Value = 2;
-    int64 Ts = 3;
+    int64 AggValue = 2;
+    int64 AggTimestamp = 3;
+    int64 LocalValue = 4;
+    int64 LocalTimestamp = 5;
+    int64 FailedLocalValue = 6;
+    int64 FailedLocalTimestamp = 7;
+    string NodeID = 8;
+}
+
+message PromiseMessages {
+    bool OK = 1;
+    int64 FailedLocalValue = 2;
+    int64 FailedLocalTimestamp = 3;
+    map<string, PromiseMessage> Values = 4;
 }
 message AcceptMessage {
     int64 Key = 1;
@@ -49,6 +66,7 @@ message AcceptMessage {
     string NodeID = 5;
     string FailedNodeID = 6;
 }
+
 message LearnMessage {
     bool OK = 1;
 }
@@ -57,14 +75,16 @@ message LearnMessage {
 service KeyValueStorage {
     rpc Write(WriteRequest) returns (google.protobuf.Empty) {}
     rpc Read(ReadRequest) returns (ReadResponse) {}
-    rpc ReadAll(ReadRequest) returns (ReadAllResponse) {
+    rpc ReadAll(ReadRequest) returns (ReadResponseWithID) {
         option (gorums.quorumcall) = true;
+        option (gorums.custom_return_type) = "ReadResponses";
     }
     rpc ReadLocal(ReadLocalRequest) returns (ReadResponse) {}
     rpc Gossip(GossipMessage) returns (google.protobuf.Empty) {}
     rpc PrintState(google.protobuf.Empty) returns (google.protobuf.Empty) {}
     rpc Prepare(PrepareMessage) returns (PromiseMessage) {
         option (gorums.quorumcall) = true;
+        option (gorums.custom_return_type) = "PromiseMessages";
     }
     rpc Accept(AcceptMessage) returns (LearnMessage) {
         option (gorums.quorumcall) = true;

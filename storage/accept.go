@@ -28,6 +28,7 @@ func (ss *StorageService) Accept(ctx gorums.ServerCtx, request *kvsprotos.Accept
 		request.GetFailedNodeID(),
 		request.GetNodeID(),
 	)
+	ss.storage.RemoveExclusionsFromKey(request.GetKey())
 
 	localValue, err := ss.storage.ReadValueFromNode(request.GetKey(), ss.id)
 	if err != nil {
@@ -45,5 +46,7 @@ func (ss *StorageService) Accept(ctx gorums.ServerCtx, request *kvsprotos.Accept
 	ss.timestamp.Unlock(&tsRef)
 
 	go ss.sendGossip(request.GetNodeID(), request.GetKey(), valuesToGossip, ts, localValue)
-	return &kvsprotos.LearnMessage{OK: true}, nil
+	return &kvsprotos.LearnMessage{
+		OK: true,
+	}, nil
 }

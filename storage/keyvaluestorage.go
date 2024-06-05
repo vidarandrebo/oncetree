@@ -5,7 +5,7 @@ import (
 	"log"
 	"sync"
 
-	"github.com/vidarandrebo/oncetree/concurrent/hashset"
+	"github.com/vidarandrebo/oncetree/common/hashset"
 )
 
 // KeyValueStorage
@@ -13,15 +13,19 @@ import (
 //
 // NodeAddress -> Key -> Value
 type KeyValueStorage struct {
-	data  map[string]map[int64]TimestampedValue
-	local map[string]map[int64]TimestampedValue
-	mut   sync.RWMutex
+	data             map[string]map[int64]TimestampedValue
+	local            map[string]map[int64]TimestampedValue
+	readExclusions   map[int64]hashset.HashSet[string]            // key -> nodeID
+	gossipExclusions map[int64]map[string]hashset.HashSet[string] // key -> dest -> nodeID
+	mut              sync.RWMutex
 }
 
 func NewKeyValueStorage() *KeyValueStorage {
 	return &KeyValueStorage{
-		data:  make(map[string]map[int64]TimestampedValue),
-		local: make(map[string]map[int64]TimestampedValue),
+		data:             make(map[string]map[int64]TimestampedValue),
+		local:            make(map[string]map[int64]TimestampedValue),
+		readExclusions:   make(map[int64]hashset.HashSet[string]),
+		gossipExclusions: make(map[int64]map[string]hashset.HashSet[string]),
 	}
 }
 
@@ -31,9 +35,13 @@ func (kvs *KeyValueStorage) ReadValue(key int64) (int64, error) {
 	defer kvs.mut.RUnlock()
 	agg := int64(0)
 	found := false
-	for _, values := range kvs.data {
+	for nodeID, values := range kvs.data {
 		if value, exists := values[key]; exists {
 			found = true
+			// we skip the key for that node if it is excluded
+			if excludedNodes, ok := kvs.readExclusions[key]; ok && excludedNodes.Contains(nodeID) {
+				continue
+			}
 			agg += value.Value
 		}
 	}
@@ -72,10 +80,10 @@ func (kvs *KeyValueStorage) ReadValueFromNode(key int64, nodeID string) (Timesta
 	}
 }
 
-// ReadValueExceptNode reads and combines the stored values from all neighbouring nodes except the input ID
+// GossipValue reads and combines the stored values from all neighbouring nodes except the input ID
 //
 // Will return (0, nil) and not (0, err) if only the excluded node has a value for the input key
-func (kvs *KeyValueStorage) ReadValueExceptNode(key int64, exceptID string) (int64, error) {
+func (kvs *KeyValueStorage) GossipValue(key int64, destId string) (int64, error) {
 	kvs.mut.RLock()
 	defer kvs.mut.RUnlock()
 	agg := int64(0)
@@ -83,7 +91,15 @@ func (kvs *KeyValueStorage) ReadValueExceptNode(key int64, exceptID string) (int
 	for nodeID, values := range kvs.data {
 		if value, exists := values[key]; exists {
 			found = true
-			if exceptID != nodeID {
+
+			// exclusions contain the key
+			if destinations, hasExcludeForKey := kvs.gossipExclusions[key]; hasExcludeForKey {
+				// exclusions contain the destination of gossip
+				if excludes, hasExcludeForDestination := destinations[destId]; hasExcludeForDestination && excludes.Contains(nodeID) {
+					continue
+				}
+			}
+			if destId != nodeID {
 				agg += value.Value
 			}
 		}
@@ -98,8 +114,8 @@ func (kvs *KeyValueStorage) ReadValueExceptNode(key int64, exceptID string) (int
 func (kvs *KeyValueStorage) GossipValues(key int64, nodeIDs []string) (map[string]int64, error) {
 	values := make(map[string]int64)
 	for _, nodeID := range nodeIDs {
-		// ReadValueExceptNode grabs lock, no need to lock here
-		value, err := kvs.ReadValueExceptNode(key, nodeID)
+		// GossipValue grabs lock, no need to lock here
+		value, err := kvs.GossipValue(key, nodeID)
 		if err != nil {
 			return nil, err
 		}
@@ -198,11 +214,52 @@ func (kvs *KeyValueStorage) ChangeKeyValueOwnership(key int64, aggValue int64, l
 func (kvs *KeyValueStorage) Keys() hashset.HashSet[int64] {
 	kvs.mut.RLock()
 	defer kvs.mut.RUnlock()
-	keys := hashset.NewHashSet[int64]()
+	return kvs.keys()
+}
+
+func (kvs *KeyValueStorage) keys() hashset.HashSet[int64] {
+	keys := hashset.New[int64]()
 	for _, nodeValues := range kvs.data {
 		for key := range nodeValues {
 			keys.Add(key)
 		}
 	}
 	return keys
+}
+
+func (kvs *KeyValueStorage) AddReadExclusions(excludeIDs ...string) {
+	kvs.mut.Lock()
+	kvs.addReadExclusions(excludeIDs...)
+	kvs.mut.Unlock()
+}
+
+func (kvs *KeyValueStorage) addReadExclusions(excludeIDs ...string) {
+	for _, key := range kvs.keys().Values() {
+		kvs.readExclusions[key] = hashset.New[string]()
+		for _, id := range excludeIDs {
+			kvs.readExclusions[key].Add(id)
+		}
+	}
+}
+
+func (kvs *KeyValueStorage) AddGossipExclusions(excludes map[string]hashset.HashSet[string]) {
+	kvs.mut.Lock()
+	kvs.addGossipExclusions(excludes)
+	kvs.mut.Unlock()
+}
+
+func (kvs *KeyValueStorage) addGossipExclusions(excludes map[string]hashset.HashSet[string]) {
+	for _, key := range kvs.keys().Values() {
+		kvs.gossipExclusions[key] = make(map[string]hashset.HashSet[string])
+		for dest, exclude := range excludes {
+			kvs.gossipExclusions[key][dest] = exclude
+		}
+	}
+}
+
+func (kvs *KeyValueStorage) RemoveExclusionsFromKey(key int64) {
+	kvs.mut.Lock()
+	defer kvs.mut.Unlock()
+	delete(kvs.gossipExclusions, key)
+	delete(kvs.readExclusions, key)
 }

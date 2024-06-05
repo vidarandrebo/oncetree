@@ -10,9 +10,11 @@ import (
 	"slices"
 	"sync"
 
+	"github.com/vidarandrebo/oncetree/storage/sevents"
+
 	nodeprotos "github.com/vidarandrebo/oncetree/protos/node"
 
-	"github.com/vidarandrebo/oncetree/concurrent/hashset"
+	"github.com/vidarandrebo/oncetree/common/hashset"
 	"github.com/vidarandrebo/oncetree/failuredetector/fdevents"
 	"github.com/vidarandrebo/oncetree/nodemanager/nmenums"
 	"github.com/vidarandrebo/oncetree/nodemanager/nmevents"
@@ -23,8 +25,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/vidarandrebo/oncetree/concurrent/maps"
-	"github.com/vidarandrebo/oncetree/concurrent/mutex"
+	"github.com/vidarandrebo/oncetree/common/concurrentmap"
+	"github.com/vidarandrebo/oncetree/common/mutex"
 
 	nmprotos "github.com/vidarandrebo/oncetree/protos/nodemanager"
 )
@@ -32,7 +34,7 @@ import (
 type NodeManager struct {
 	id              string
 	address         string
-	neighbours      *maps.ConcurrentMap[string, *Neighbour]
+	neighbours      *concurrentmap.ConcurrentMap[string, *Neighbour]
 	epoch           *mutex.RWMutex[int64]
 	nextGorumsID    *mutex.RWMutex[uint32]
 	lastJoinID      *mutex.RWMutex[string]
@@ -49,13 +51,13 @@ func New(id string, address string, logger *slog.Logger, eventBus *eventbus.Even
 	nm := &NodeManager{
 		id:              id,
 		address:         address,
-		neighbours:      maps.NewConcurrentMap[string, *Neighbour](),
+		neighbours:      concurrentmap.New[string, *Neighbour](),
 		nextGorumsID:    mutex.New[uint32](0),
 		lastJoinID:      mutex.New(""),
 		epoch:           mutex.New[int64](0),
 		logger:          logger.With(slog.Group("node", slog.String("module", "nodemanager"))),
 		recoveryProcess: &RecoveryProcess{},
-		blackList:       hashset.New[string](),
+		blackList:       hashset.NewConcurrentHashSet[string](),
 		eventBus:        eventBus,
 		gorumsProvider:  gorumsProvider,
 	}
@@ -88,7 +90,7 @@ func (nm *NodeManager) SendPrepare(e fdevents.NodeFailedEvent) {
 	nm.recoveryProcess.mut.Lock()
 
 	if (nm.recoveryProcess.isActive) && (nm.recoveryProcess.groupID != e.NodeID) {
-		panic("more than 1 concurrent failure, unrecoverable")
+		panic("more than 1 common failure, unrecoverable")
 	}
 	if nm.blackList.Contains(e.NodeID) {
 		nm.logger.Info("node failure already handled, skipping",
@@ -183,8 +185,34 @@ func (nm *NodeManager) SendAccept() {
 	// but in more complex re-config scenario, we could nest the tree structure
 	// we would then however make sure we don't introduce loops in the tree.
 	newParent := make(map[string]string) // nodeID -> parentID
-	for _, member := range node.GroupMemberIDs() {
+	readExcludes := make([]string, 0)
+	gossipExcludes := make(map[string]hashset.HashSet[string])
+
+	groupMembers := node.GroupMemberIDs()
+	for _, member := range groupMembers {
 		newParent[member] = nm.id
+
+		// add new members to read and gossip exclusion
+		if member != nm.id {
+			readExcludes = append(readExcludes, member)
+			gossipExcludes[member] = hashset.New[string]()
+
+			// do not send data from failed node to members
+			gossipExcludes[member].Add(nm.recoveryProcess.groupID)
+		}
+	}
+
+	// neighbours that are not part of group
+	// do not send data from new neighbours (in recovery group) to old neighbours
+	for _, neighbourID := range nm.NeighbourIDs() {
+		if neighbourID != nm.recoveryProcess.groupID && !slices.Contains(groupMembers, neighbourID) {
+			gossipExcludes[neighbourID] = hashset.New[string]()
+			for _, member := range groupMembers {
+				if member != nm.id {
+					gossipExcludes[neighbourID].Add(member)
+				}
+			}
+		}
 	}
 
 	learn, err := cfg.Accept(ctx, &nmprotos.AcceptMessage{
@@ -199,6 +227,10 @@ func (nm *NodeManager) SendAccept() {
 	}
 
 	if learn.GetOK() {
+		nm.eventBus.Execute(sevents.ExcludeFromStorageEvent{
+			ReadExcludeIDs: readExcludes,
+			GossipExcludes: gossipExcludes,
+		})
 		go nm.SendCommit()
 	}
 }
@@ -257,7 +289,7 @@ func (nm *NodeManager) HandleNeighbourRemovedEvent(e nmevents.NeighbourRemovedEv
 	nm.logger.Info("removed neighbour", "id", e.NodeID)
 }
 
-func (nm *NodeManager) Neighbours() []maps.KeyValuePair[string, *Neighbour] {
+func (nm *NodeManager) Neighbours() []concurrentmap.KeyValuePair[string, *Neighbour] {
 	return nm.neighbours.Entries()
 }
 
